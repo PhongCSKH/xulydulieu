@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { 
   UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, Clock, 
   Download, Search, RefreshCw, Trash2, Layers, AlertTriangle, 
-  ChevronLeft, ChevronRight, CreditCard
+  ChevronLeft, ChevronRight, CreditCard, Filter, ChevronDown
 } from 'lucide-react';
 import { 
   detectFileType, 
@@ -32,6 +32,8 @@ export default function RaSoatTamUngView() {
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedKhoa, setSelectedKhoa] = useState('ALL');
+  const [selectedGhiChuHT, setSelectedGhiChuHT] = useState([]);
+  const [isGhiChuHTOpen, setIsGhiChuHTOpen] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
@@ -146,6 +148,8 @@ export default function RaSoatTamUngView() {
     setMerged140({ rows: [], alerts: [] });
     setResultData(null);
     setProgressInfo(null);
+    setSelectedGhiChuHT([]);
+    setIsGhiChuHTOpen(false);
     setCurrentPage(1);
   };
 
@@ -154,6 +158,28 @@ export default function RaSoatTamUngView() {
     const set = new Set(resultData.items.map(i => i.khoaPhongBoVe).filter(Boolean));
     return Array.from(set).sort();
   }, [resultData]);
+
+  const listGhiChuHT = useMemo(() => {
+    if (!resultData) return [];
+    const set = new Set(resultData.items.map(i => i.ghiChuHeThong || '(Trống)'));
+    return Array.from(set).sort();
+  }, [resultData]);
+
+  const handleToggleGhiChuHT = (val) => {
+    setSelectedGhiChuHT(prev => {
+      if (prev.includes(val)) {
+        return prev.filter(v => v !== val);
+      } else {
+        return [...prev, val];
+      }
+    });
+    setCurrentPage(1);
+  };
+
+  const handleClearGhiChuHT = () => {
+    setSelectedGhiChuHT([]);
+    setCurrentPage(1);
+  };
 
   const totalDuplicates = mergedBoVe.alerts.length + merged140.alerts.length;
 
@@ -167,6 +193,8 @@ export default function RaSoatTamUngView() {
 
       if (selectedKhoa !== 'ALL' && item.khoaPhongBoVe !== selectedKhoa) return false;
 
+      if (selectedGhiChuHT.length > 0 && !selectedGhiChuHT.includes(item.ghiChuHeThong)) return false;
+
       if (searchTerm) {
         const q = searchTerm.toLowerCase().trim();
         const matchBN = String(item.maBN || '').toLowerCase().includes(q);
@@ -174,11 +202,12 @@ export default function RaSoatTamUngView() {
         const matchBL = String(item.soBienLai || '').toLowerCase().includes(q);
         const matchTN = String(item.maThuNgan || '').toLowerCase().includes(q) || String(item.tenThuNgan || '').toLowerCase().includes(q);
         const matchKhoa = String(item.khoaPhongBoVe || '').toLowerCase().includes(q);
-        return matchBN || matchName || matchBL || matchTN || matchKhoa;
+        const matchGhiChuHT = String(item.ghiChuHeThong || '').toLowerCase().includes(q);
+        return matchBN || matchName || matchBL || matchTN || matchKhoa || matchGhiChuHT;
       }
       return true;
     });
-  }, [resultData, activeTab, selectedKhoa, searchTerm]);
+  }, [resultData, activeTab, selectedKhoa, selectedGhiChuHT, searchTerm]);
 
   const totalPages = Math.ceil(filteredItems.length / pageSize) || 1;
   const paginatedItems = filteredItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -507,16 +536,72 @@ export default function RaSoatTamUngView() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* BỘ LỌC KHOA PHÒNG */}
               <select
                 value={selectedKhoa}
                 onChange={(e) => { setSelectedKhoa(e.target.value); setCurrentPage(1); }}
-                className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500 max-w-[160px] truncate"
+                className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500 max-w-[140px] truncate cursor-pointer"
               >
                 <option value="ALL">Khoa phòng</option>
                 {departmentList.map(k => (
                   <option key={k} value={k}>{k}</option>
                 ))}
               </select>
+
+              {/* BỘ LỌC GHI CHÚ HỆ THỐNG (ĐA LỰA CHỌN) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsGhiChuHTOpen(!isGhiChuHTOpen)}
+                  className={`inline-flex items-center gap-1.5 text-xs border rounded-lg px-2.5 py-1.5 transition cursor-pointer ${
+                    selectedGhiChuHT.length > 0
+                      ? 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
+                      : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>
+                    Ghi chú HT {selectedGhiChuHT.length > 0 ? `(${selectedGhiChuHT.length})` : ''}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                </button>
+
+                {isGhiChuHTOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-30 p-2 space-y-1">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 px-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Ghi Chú Hệ Thống</span>
+                      {selectedGhiChuHT.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearGhiChuHT}
+                          className="text-[10px] text-teal-600 hover:text-teal-800 font-medium cursor-pointer"
+                        >
+                          Bỏ chọn
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-52 overflow-y-auto space-y-0.5 pt-1">
+                      {listGhiChuHT.map((val) => {
+                        const isChecked = selectedGhiChuHT.includes(val);
+                        return (
+                          <label
+                            key={val}
+                            className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs text-slate-700 transition"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleGhiChuHT(val)}
+                              className="rounded text-teal-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                            />
+                            <span className="truncate" title={val}>{val}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -525,7 +610,7 @@ export default function RaSoatTamUngView() {
                   placeholder="Mã BN, tên, BL, thu ngân..."
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 w-52"
+                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 w-48"
                 />
               </div>
             </div>
@@ -542,6 +627,7 @@ export default function RaSoatTamUngView() {
                     <th className="py-3 px-3">Mã BN</th>
                     <th className="py-3 px-4">Họ và Tên</th>
                     <th className="py-3 px-3">Khoa Phòng</th>
+                    <th className="py-3 px-3">Ghi Chú HT</th>
                     <th className="py-3 px-3 text-right">Số Tiền</th>
                     <th className="py-3 px-3">Số BL</th>
                     <th className="py-3 px-3">Thu Ngân</th>
@@ -554,7 +640,7 @@ export default function RaSoatTamUngView() {
                 <tbody className="divide-y divide-slate-100">
                   {paginatedItems.length === 0 ? (
                     <tr>
-                      <td colSpan="12" className="py-8 text-center text-slate-400">
+                      <td colSpan="13" className="py-8 text-center text-slate-400">
                         Không có dữ liệu phù hợp.
                       </td>
                     </tr>
@@ -565,8 +651,17 @@ export default function RaSoatTamUngView() {
                         <td className="py-2.5 px-3 font-mono text-slate-700">{item.ngayBoVe || '--/--/----'}</td>
                         <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">{item.maBN}</td>
                         <td className="py-2.5 px-4 font-medium text-slate-800">{item.hoTen}</td>
-                        <td className="py-2.5 px-3 text-slate-600 max-w-[160px] truncate" title={item.khoaPhongBoVe}>
+                        <td className="py-2.5 px-3 text-slate-600 max-w-[140px] truncate" title={item.khoaPhongBoVe}>
                           {item.khoaPhongBoVe}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 max-w-[140px] truncate" title={item.ghiChuHeThong}>
+                          <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                            item.ghiChuHeThong.includes('Hoàn tất') 
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {item.ghiChuHeThong}
+                          </span>
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
                           {formatCurrency(item.targetAmount)}

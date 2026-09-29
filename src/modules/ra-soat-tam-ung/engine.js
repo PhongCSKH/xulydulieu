@@ -534,6 +534,11 @@ export function processReconciliationTamUng(rowsBoVe, rows140) {
         : 'Không có dữ liệu trong BC140';
     }
 
+    const rawGhiChuHT = getRowVal(rBoVe, ['GHI CHÚ HỆ THỐNG', 'Ghi chú hệ thống', 'Ghi chu he thong']);
+    const ghiChuHeThong = rawGhiChuHT !== undefined && rawGhiChuHT !== null && String(rawGhiChuHT).trim() !== ''
+      ? String(rawGhiChuHT).trim()
+      : '(Trống)';
+
     results.push({
       stt: idx + 1,
       originalRow: rBoVe,
@@ -541,6 +546,7 @@ export function processReconciliationTamUng(rowsBoVe, rows140) {
       hoTen,
       ngayBoVe,
       khoaPhongBoVe,
+      ghiChuHeThong,
       targetAmount,
       rawAmount: rawSoTien,
       status,
