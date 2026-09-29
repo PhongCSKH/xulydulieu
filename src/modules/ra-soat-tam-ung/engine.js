@@ -435,24 +435,35 @@ export function processReconciliationTamUng(rowsBoVe, rows140) {
     }
 
     if (candidateRows.length > 0 && targetAmount > 0) {
-      const matchesAmount = (r) => {
-        return r.amounts && r.amounts.some(amt => Math.abs(amt - targetAmount) < 100);
+      const getMinDiff = (r) => {
+        if (!r.amounts || r.amounts.length === 0) return Infinity;
+        return Math.min(...r.amounts.map(amt => Math.abs(amt - targetAmount)));
       };
 
-      bestMatch = candidateRows.find(r => {
+      const matchesAmount = (r) => {
+        return getMinDiff(r) <= 2000;
+      };
+
+      const tier1Matches = candidateRows.filter(r => {
         const rDept = normalizeDeptName(r.khoa);
         return r.ngay === ngayBoVe && (rDept === normDeptBoVe || !normDeptBoVe) && matchesAmount(r);
       });
 
-      if (bestMatch) {
+      if (tier1Matches.length > 0) {
+        tier1Matches.sort((a, b) => getMinDiff(a) - getMinDiff(b));
+        bestMatch = tier1Matches[0];
         matchQuality = 'EXACT';
       } else {
-        bestMatch = candidateRows.find(r => r.ngay === ngayBoVe && matchesAmount(r));
-        if (bestMatch) {
+        const tier2Matches = candidateRows.filter(r => r.ngay === ngayBoVe && matchesAmount(r));
+        if (tier2Matches.length > 0) {
+          tier2Matches.sort((a, b) => getMinDiff(a) - getMinDiff(b));
+          bestMatch = tier2Matches[0];
           matchQuality = 'APPROX_DEPT';
         } else {
-          bestMatch = candidateRows.find(r => matchesAmount(r));
-          if (bestMatch) {
+          const tier3Matches = candidateRows.filter(r => matchesAmount(r));
+          if (tier3Matches.length > 0) {
+            tier3Matches.sort((a, b) => getMinDiff(a) - getMinDiff(b));
+            bestMatch = tier3Matches[0];
             matchQuality = 'DIFF_DATE';
           }
         }
