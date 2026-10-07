@@ -7,6 +7,8 @@ export const DEFAULT_SHEET_CONFIG = {
   gidMucTieu: '697870575',        // Sheet MỤC TIÊU
 };
 
+export const KIOSK_STORAGE_KEY = 'CSKH_KIOSK_LOCATIONS_CUSTOM';
+
 export function cleanStr(val) {
   if (val === null || val === undefined) return '';
   return String(val).trim().toLowerCase().replace(/\s+/g, ' ');
@@ -90,56 +92,7 @@ export async function fetchGoogleSheetData(spreadsheetId, gid) {
 }
 
 /**
- * Tải toàn bộ 3 sheet cùng lúc và liên kết dữ liệu
- */
-export async function syncAllKioskSheets(config = DEFAULT_SHEET_CONFIG) {
-  const [dataRows, locRows, targetRows] = await Promise.all([
-    fetchGoogleSheetData(config.spreadsheetId, config.gidDuLieuTong),
-    fetchGoogleSheetData(config.spreadsheetId, config.gidViTriMay).catch(() => []),
-    fetchGoogleSheetData(config.spreadsheetId, config.gidMucTieu).catch(() => [])
-  ]);
-
-  // 1. Phân tích sheet Vị trí máy & Cấu hình
-  const locationsMap = {};
-  locRows.forEach(r => {
-    const machine = normalizeKioskName(r['Tên máy'] || r['Tên KIOS'] || '');
-    const area = r['Khu vực'] || '';
-    const configName = r['Cấu hình'] || 'CSKH hỗ trợ';
-    if (machine) {
-      locationsMap[machine] = { area, machine, config: configName };
-    }
-  });
-
-  // 2. Phân tích sheet Mục tiêu
-  const targetsMap = {};
-  let totalTargetCLS = 2850;
-  let totalTargetThuoc = 300;
-
-  targetRows.forEach(r => {
-    const khuVuc = cleanStr(r['KHU VỰC'] || '');
-    const cls = parseInt(r['ĐĂNG KÝ & THU CLS'] || r['DANG KY & THU CLS'] || '0', 10) || 0;
-    const thuoc = parseInt(r['BÁN THUỐC'] || r['BAN THUOC'] || '0', 10) || 0;
-
-    if (khuVuc.includes('mục tiêu') || khuVuc.includes('muc tieu') || khuVuc.includes('tổng')) {
-      if (cls > 0) totalTargetCLS = cls;
-      if (thuoc > 0) totalTargetThuoc = thuoc;
-    } else if (khuVuc) {
-      targetsMap[khuVuc] = { targetCLS: cls, targetThuoc: thuoc, totalTarget: cls + thuoc };
-    }
-  });
-
-  return {
-    dataRows,
-    locationsMap,
-    targetsMap,
-    totalTargetCLS,
-    totalTargetThuoc,
-    totalDailyTarget: totalTargetCLS + totalTargetThuoc
-  };
-}
-
-/**
- * Danh sách vị trí bố trí máy chuẩn
+ * Danh sách vị trí bố trí máy chuẩn gốc
  */
 export const DEFAULT_KIOSK_LOCATIONS = [
   { area: 'Trệt A - Sảnh chính', machine: 'KIOS17', config: 'Tự thực hiện' },
@@ -195,7 +148,110 @@ export const TARGET_AREAS = [
 ];
 
 /**
- * Thuật toán tổng hợp dữ liệu chính xác 100% từ từng dòng Google Sheet
+ * Lưu & nạp danh sách Kiosk tùy chỉnh từ LocalStorage
+ */
+export function getSavedKioskLocations() {
+  try {
+    const saved = localStorage.getItem(KIOSK_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc KIOSK_STORAGE_KEY:', e);
+  }
+  return DEFAULT_KIOSK_LOCATIONS;
+}
+
+export function saveKioskLocations(locationsList) {
+  try {
+    localStorage.setItem(KIOSK_STORAGE_KEY, JSON.stringify(locationsList));
+  } catch (e) {
+    console.warn('Lỗi ghi KIOSK_STORAGE_KEY:', e);
+  }
+}
+
+export function resetKioskLocationsToDefault() {
+  try {
+    localStorage.removeItem(KIOSK_STORAGE_KEY);
+  } catch (e) {}
+  return DEFAULT_KIOSK_LOCATIONS;
+}
+
+/**
+ * Tải toàn bộ 3 sheet cùng lúc và liên kết dữ liệu
+ */
+export async function syncAllKioskSheets(config = DEFAULT_SHEET_CONFIG) {
+  const [dataRows, locRows, targetRows] = await Promise.all([
+    fetchGoogleSheetData(config.spreadsheetId, config.gidDuLieuTong),
+    fetchGoogleSheetData(config.spreadsheetId, config.gidViTriMay).catch(() => []),
+    fetchGoogleSheetData(config.spreadsheetId, config.gidMucTieu).catch(() => [])
+  ]);
+
+  // Kiểm tra xem người dùng có cấu hình tùy chỉnh riêng trên máy không
+  const customSaved = localStorage.getItem(KIOSK_STORAGE_KEY);
+  let baseLocations = [];
+
+  if (customSaved) {
+    try {
+      baseLocations = JSON.parse(customSaved);
+    } catch (e) {
+      baseLocations = [];
+    }
+  }
+
+  // Nếu chưa có tùy chỉnh riêng thì lấy từ Sheet Vị trí máy
+  if (baseLocations.length === 0 && locRows.length > 0) {
+    baseLocations = locRows.map(r => ({
+      area: r['Khu vực'] || 'Khác',
+      machine: r['Tên máy'] || r['Tên KIOS'] || '',
+      config: r['Cấu hình'] || 'CSKH hỗ trợ'
+    })).filter(k => Boolean(k.machine));
+  }
+
+  if (baseLocations.length === 0) {
+    baseLocations = DEFAULT_KIOSK_LOCATIONS;
+  }
+
+  const locationsMap = {};
+  baseLocations.forEach(loc => {
+    const machine = normalizeKioskName(loc.machine);
+    if (machine) {
+      locationsMap[machine] = { area: loc.area, machine: loc.machine, config: loc.config };
+    }
+  });
+
+  // Phân tích sheet Mục tiêu
+  const targetsMap = {};
+  let totalTargetCLS = 2850;
+  let totalTargetThuoc = 300;
+
+  targetRows.forEach(r => {
+    const khuVuc = cleanStr(r['KHU VỰC'] || '');
+    const cls = parseInt(r['ĐĂNG KÝ & THU CLS'] || r['DANG KY & THU CLS'] || '0', 10) || 0;
+    const thuoc = parseInt(r['BÁN THUỐC'] || r['BAN THUOC'] || '0', 10) || 0;
+
+    if (khuVuc.includes('mục tiêu') || khuVuc.includes('muc tieu') || khuVuc.includes('tổng')) {
+      if (cls > 0) totalTargetCLS = cls;
+      if (thuoc > 0) totalTargetThuoc = thuoc;
+    } else if (khuVuc) {
+      targetsMap[khuVuc] = { targetCLS: cls, targetThuoc: thuoc, totalTarget: cls + thuoc };
+    }
+  });
+
+  return {
+    dataRows,
+    locationsList: baseLocations,
+    locationsMap,
+    targetsMap,
+    totalTargetCLS,
+    totalTargetThuoc,
+    totalDailyTarget: totalTargetCLS + totalTargetThuoc
+  };
+}
+
+/**
+ * Thuật toán tổng hợp dữ liệu chính xác 100%
  */
 export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {}, filterOptions = {}) {
   const {
@@ -209,7 +265,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   const targetCLS = targetsInfo.totalTargetCLS || 2850;
   const targetThuoc = targetsInfo.totalTargetThuoc || 300;
 
-  // Lọc dữ liệu chính xác
   const filteredRows = rawRows.filter(row => {
     if (dateFilter !== 'ALL') {
       const d = row['NGÀY'] || (row['Ngày giờ thao tác'] || '').split(' ')[0];
@@ -235,7 +290,7 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   let countCK = 0;
   let countPOS = 0;
 
-  // Dành riêng cho máy TỰ THỰC HIỆN
+  // Dành riêng cho các máy TỰ THỰC HIỆN
   let selfTotal = 0;
   let selfCheckin = 0;
   let selfVienPhi = 0;
@@ -243,13 +298,11 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   let selfCountCK = 0;
   let selfCountPOS = 0;
 
-  // Theo dõi theo từng khu vực
   const areaMap = {};
   TARGET_AREAS.forEach(a => {
     areaMap[a] = { area: a, checkin: 0, vienPhi: 0, banThuoc: 0, total: 0 };
   });
 
-  // Theo dõi theo giờ (05:00 - 18:00) cho toàn viện và máy Tự thực hiện
   const hourlyGeneral = {};
   const hourlySelf = {};
   for (let h = 5; h <= 18; h++) {
@@ -257,7 +310,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
     hourlySelf[h] = { hour: `${h}:00`, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
   }
 
-  // Danh sách máy Kiosk & Nhân sự
   const kioskMap = {};
   const staffMap = {};
 
@@ -280,7 +332,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
     const locConfig = locInfo?.config || row['_config'] || 'CSKH hỗ trợ';
     const isSelfService = locConfig.toLowerCase().includes('tự thực hiện') || String(row['Họ tên user']).toLowerCase().includes('tự thực hiện');
 
-    // Giờ thao tác
     const rawTime = row['Ngày giờ thao tác'] || '';
     let hour = -1;
     if (row['_hour'] !== undefined) {
@@ -313,7 +364,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
       }
     }
 
-    // Nhóm theo khu vực (nếu 'Không thấy khu vực' mà máy đã biết vị trí thì tự map lại)
     let area = row['KHU VỰC'] || '';
     if ((!area || area === 'Không thấy khu vực') && locInfo?.area) {
       area = locInfo.area;
@@ -328,7 +378,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
     if (hasBanThuoc) areaMap[area].banThuoc++;
     areaMap[area].total++;
 
-    // Nhóm theo máy Kiosk
     if (!kioskMap[machine]) {
       kioskMap[machine] = {
         machine,
@@ -347,7 +396,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
     if (hasBanThuoc) kioskMap[machine].banThuoc++;
     kioskMap[machine].lastActiveTime = rawTime;
 
-    // Nhóm theo nhân sự CSKH
     const staff = row['Họ tên user'] || 'Không xác định';
     if (!staff.toLowerCase().includes('tự thực hiện')) {
       if (!staffMap[staff]) {
@@ -363,19 +411,14 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   const totalOps = filteredRows.length;
   const overallRate = totalOps > 0 ? ((totalOps / targetDaily) * 100).toFixed(1) : '0';
 
-  // Tỷ lệ hoàn thành theo từng mục tiêu
   const regCompletedRate = targetCLS > 0 ? (((totalCheckin + totalVienPhi) / targetCLS) * 100).toFixed(1) : '0';
   const medCompletedRate = targetThuoc > 0 ? (((totalBanThuoc) / targetThuoc) * 100).toFixed(1) : '0';
 
-  // Tỷ lệ thanh toán
   const totalPaid = (countCK + countPOS) || 1;
   const rateCK = ((countCK / totalPaid) * 100).toFixed(1);
   const ratePOS = ((countPOS / totalPaid) * 100).toFixed(1);
 
-  // Sắp xếp khu vực theo tổng lượt giảm dần
   const areaBreakdown = Object.values(areaMap).sort((a, b) => b.total - a.total);
-
-  // Danh sách giờ
   const hourlyGeneralList = Object.keys(hourlyGeneral).map(Number).sort((a, b) => a - b).map(h => hourlyGeneral[h]);
   const hourlySelfList = Object.keys(hourlySelf).map(Number).sort((a, b) => a - b).map(h => hourlySelf[h]);
 
@@ -393,7 +436,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
       ratePOS,
       countCK,
       countPOS,
-      // Máy Tự thực hiện
       selfTotal,
       selfCheckin,
       selfVienPhi,
