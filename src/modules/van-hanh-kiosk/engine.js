@@ -4,7 +4,7 @@ export const DEFAULT_SHEET_CONFIG = {
   spreadsheetId: '1K6JDDbI4A8smzlAb7OjFbZaDKP4vgF_ZQBwFM6zdK8Y',
   gidDuLieuTong: '414639832',     // Sheet DỮ LIỆU TỔNG
   gidViTriMay: '491763635',       // Sheet VỊ TRÍ BỐ TRÍ MÁY
-  gidMucTieu: '',                 // Sheet MỤC TIÊU
+  gidMucTieu: '697870575',        // Sheet MỤC TIÊU
 };
 
 export function cleanStr(val) {
@@ -18,7 +18,7 @@ export function normalizeKioskName(val) {
 }
 
 /**
- * Parser CSV an toàn
+ * Parser CSV an toàn xử lý cả trường có dấu phẩy và ngoặc kép
  */
 export function parseCSV(csvText) {
   const rows = [];
@@ -61,14 +61,14 @@ export function parseCSV(csvText) {
   return rows.slice(1).map(r => {
     const obj = {};
     headers.forEach((h, idx) => {
-      obj[h] = r[idx] !== undefined ? r[idx].trim() : '';
+      if (h) obj[h] = r[idx] !== undefined ? r[idx].trim() : '';
     });
     return obj;
   });
 }
 
 /**
- * Kéo dữ liệu trực tiếp từ Google Sheet
+ * Kéo dữ liệu trực tiếp từ Google Sheet qua Google Visualization API CSV Export
  */
 export async function fetchGoogleSheetData(spreadsheetId, gid) {
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
@@ -78,7 +78,7 @@ export async function fetchGoogleSheetData(spreadsheetId, gid) {
   });
 
   if (!response.ok) {
-    throw new Error(`Không thể kết nối Google Sheet (HTTP ${response.status})`);
+    throw new Error(`Lỗi kết nối Google Sheet (HTTP ${response.status})`);
   }
 
   const text = await response.text();
@@ -90,7 +90,56 @@ export async function fetchGoogleSheetData(spreadsheetId, gid) {
 }
 
 /**
- * Danh sách vị trí máy & cấu hình (khớp 100% với sheet của bạn)
+ * Tải toàn bộ 3 sheet cùng lúc và liên kết dữ liệu
+ */
+export async function syncAllKioskSheets(config = DEFAULT_SHEET_CONFIG) {
+  const [dataRows, locRows, targetRows] = await Promise.all([
+    fetchGoogleSheetData(config.spreadsheetId, config.gidDuLieuTong),
+    fetchGoogleSheetData(config.spreadsheetId, config.gidViTriMay).catch(() => []),
+    fetchGoogleSheetData(config.spreadsheetId, config.gidMucTieu).catch(() => [])
+  ]);
+
+  // 1. Phân tích sheet Vị trí máy & Cấu hình
+  const locationsMap = {};
+  locRows.forEach(r => {
+    const machine = normalizeKioskName(r['Tên máy'] || r['Tên KIOS'] || '');
+    const area = r['Khu vực'] || '';
+    const configName = r['Cấu hình'] || 'CSKH hỗ trợ';
+    if (machine) {
+      locationsMap[machine] = { area, machine, config: configName };
+    }
+  });
+
+  // 2. Phân tích sheet Mục tiêu
+  const targetsMap = {};
+  let totalTargetCLS = 2850;
+  let totalTargetThuoc = 300;
+
+  targetRows.forEach(r => {
+    const khuVuc = cleanStr(r['KHU VỰC'] || '');
+    const cls = parseInt(r['ĐĂNG KÝ & THU CLS'] || r['DANG KY & THU CLS'] || '0', 10) || 0;
+    const thuoc = parseInt(r['BÁN THUỐC'] || r['BAN THUOC'] || '0', 10) || 0;
+
+    if (khuVuc.includes('mục tiêu') || khuVuc.includes('muc tieu') || khuVuc.includes('tổng')) {
+      if (cls > 0) totalTargetCLS = cls;
+      if (thuoc > 0) totalTargetThuoc = thuoc;
+    } else if (khuVuc) {
+      targetsMap[khuVuc] = { targetCLS: cls, targetThuoc: thuoc, totalTarget: cls + thuoc };
+    }
+  });
+
+  return {
+    dataRows,
+    locationsMap,
+    targetsMap,
+    totalTargetCLS,
+    totalTargetThuoc,
+    totalDailyTarget: totalTargetCLS + totalTargetThuoc
+  };
+}
+
+/**
+ * Danh sách vị trí bố trí máy chuẩn
  */
 export const DEFAULT_KIOSK_LOCATIONS = [
   { area: 'Trệt A - Sảnh chính', machine: 'KIOS17', config: 'Tự thực hiện' },
@@ -128,195 +177,39 @@ export const DEFAULT_KIOSK_LOCATIONS = [
 ];
 
 /**
- * 11 Khu vực chuẩn hiển thị trên biểu đồ
+ * 11 Khu vực chuẩn
  */
 export const TARGET_AREAS = [
-  '2D - Nội thần kinh',
-  '2B - CTCH',
   '3D - Nhi - Tai mũi họng',
-  '1A - Tiêu hóa',
-  'Trệt A - Sảnh chính',
+  '2D - Nội thần kinh',
   '2A - Tim Mạch',
-  'Trệt B - CĐHA',
+  'Trệt A - Sảnh chính',
+  '2B - CTCH',
   '1B - Sản',
+  '1A - Tiêu hóa',
+  'Trệt B - CĐHA',
   'Trệt D - Nội tiết',
   'Trệt F - Da liễu',
-  '2D - Mắt'
+  '2D - Mắt',
+  'VIP'
 ];
 
 /**
- * Dữ liệu lịch sử các ngày khớp với biểu đồ Data Studio cũ của bạn
+ * Thuật toán tổng hợp dữ liệu chính xác 100% từ từng dòng Google Sheet
  */
-export const HISTORICAL_DAYS_DATA = [
-  { date: 'Aug 3', checkin: 1496, vienPhi: 499, banThuoc: 52 },
-  { date: 'Aug 4', checkin: 1381, vienPhi: 472, banThuoc: 55 },
-  { date: 'Aug 5', checkin: 1315, vienPhi: 422, banThuoc: 31 },
-  { date: 'Aug 11', checkin: 1527, vienPhi: 478, banThuoc: 51 },
-  { date: 'Aug 12', checkin: 1171, vienPhi: 490, banThuoc: 34 },
-  { date: 'Aug 13', checkin: 1260, vienPhi: 423, banThuoc: 25 },
-  { date: 'Aug 14', checkin: 1410, vienPhi: 483, banThuoc: 43 },
-  { date: 'Aug 17', checkin: 1481, vienPhi: 563, banThuoc: 53 },
-  { date: 'Aug 18', checkin: 1489, vienPhi: 455, banThuoc: 42 },
-  { date: 'Aug 19', checkin: 1444, vienPhi: 527, banThuoc: 52 },
-  { date: 'Aug 20', checkin: 1289, vienPhi: 458, banThuoc: 28 },
-  { date: 'Aug 21', checkin: 1447, vienPhi: 443, banThuoc: 38 },
-  { date: 'Aug 24', checkin: 1291, vienPhi: 443, banThuoc: 33 },
-  { date: 'Aug 25', checkin: 1354, vienPhi: 574, banThuoc: 57 },
-  { date: 'Aug 26', checkin: 1484, vienPhi: 503, banThuoc: 37 },
-  { date: 'Aug 27', checkin: 1448, vienPhi: 427, banThuoc: 37 },
-  { date: 'Aug 28', checkin: 1345, vienPhi: 448, banThuoc: 31 },
-  { date: 'Aug 31', checkin: 1244, vienPhi: 433, banThuoc: 26 },
-  { date: 'Sep 3', checkin: 1399, vienPhi: 447, banThuoc: 36 },
-  { date: 'Sep 4', checkin: 1376, vienPhi: 526, banThuoc: 49 },
-  { date: 'Sep 5', checkin: 1526, vienPhi: 544, banThuoc: 45 },
-  { date: 'Sep 7', checkin: 1521, vienPhi: 748, banThuoc: 63 },
-  { date: 'Sep 8', checkin: 1507, vienPhi: 706, banThuoc: 77 },
-  { date: 'Sep 9', checkin: 1582, vienPhi: 793, banThuoc: 94 },
-  { date: 'Sep 10', checkin: 1630, vienPhi: 758, banThuoc: 64 },
-  { date: 'Sep 11', checkin: 1575, vienPhi: 797, banThuoc: 80 },
-  { date: 'Sep 12', checkin: 1392, vienPhi: 692, banThuoc: 66 },
-  { date: 'Sep 14', checkin: 1458, vienPhi: 674, banThuoc: 45 },
-  { date: 'Sep 15', checkin: 1366, vienPhi: 699, banThuoc: 61 },
-  { date: 'Sep 16', checkin: 1654, vienPhi: 931, banThuoc: 91 },
-  { date: 'Sep 17', checkin: 1572, vienPhi: 714, banThuoc: 87 },
-  { date: 'Sep 18', checkin: 1521, vienPhi: 787, banThuoc: 72 },
-  { date: 'Hôm nay', checkin: 1417, vienPhi: 710, banThuoc: 57 }
-];
-
-/**
- * Sinh bộ dữ liệu mẫu khớp đúng con số của bạn (2,193 lượt)
- */
-export function generateSampleKioskData() {
-  const staffList = [
-    'Hoàng Thị Huyền Trang',
-    'Phạm Hoài Linh',
-    'Nguyễn Thụy Trúc Quỳnh',
-    'Phạm Ngọc Hải',
-    'Lê Minh Quân',
-    'Võ Thị Ngọc Mai',
-    'Trần Thanh Thảo'
-  ];
-
-  // Khớp 11 khu vực từ dashboard của bạn
-  const areaDistribution = [
-    { area: '2D - Nội thần kinh', checkin: 260, vienPhi: 57, banThuoc: 0 },
-    { area: '2B - CTCH', checkin: 166, vienPhi: 108, banThuoc: 0 },
-    { area: '3D - Nhi - Tai mũi họng', checkin: 195, vienPhi: 77, banThuoc: 0 },
-    { area: '1A - Tiêu hóa', checkin: 155, vienPhi: 81, banThuoc: 4 },
-    { area: 'Trệt A - Sảnh chính', checkin: 172, vienPhi: 64, banThuoc: 3 },
-    { area: '2A - Tim Mạch', checkin: 156, vienPhi: 77, banThuoc: 1 },
-    { area: 'Trệt B - CĐHA', checkin: 92, vienPhi: 117, banThuoc: 4 },
-    { area: '1B - Sản', checkin: 99, vienPhi: 56, banThuoc: 5 },
-    { area: 'Trệt D - Nội tiết', checkin: 79, vienPhi: 34, banThuoc: 3 },
-    { area: 'Trệt F - Da liễu', checkin: 20, vienPhi: 20, banThuoc: 34 },
-    { area: '2D - Mắt', checkin: 19, vienPhi: 19, banThuoc: 3 }
-  ];
-
-  const rawRows = [];
-  let stt = 1;
-  const currentDate = '16/09/2026';
-
-  areaDistribution.forEach(dist => {
-    // Tìm các máy trong khu vực này
-    const kiosksInArea = DEFAULT_KIOSK_LOCATIONS.filter(k => k.area === dist.area);
-    const primaryKiosk = kiosksInArea[0] || { machine: 'KIOS-CHUNG', config: 'CSKH hỗ trợ' };
-
-    // Tạo các dòng Check-in
-    for (let i = 0; i < dist.checkin; i++) {
-      const isSelfKiosk = primaryKiosk.config === 'Tự thực hiện';
-      const staff = isSelfKiosk ? 'Bệnh nhân tự thực hiện' : staffList[i % staffList.length];
-      const hour = 7 + (i % 10);
-      const min = (i * 3) % 60;
-
-      rawRows.push({
-        'STT': stt++,
-        'Ngày giờ thao tác': `${currentDate} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`,
-        'PID': `${2610000000 + stt}`,
-        'Họ tên': `BỆNH NHÂN ${stt}`,
-        'Checkin': 'x',
-        'Thu viện phí': '',
-        'Bán thuốc': '',
-        'Họ tên user': staff,
-        'Tên KIOS': primaryKiosk.machine,
-        'KHU VỰC': dist.area,
-        'HÌNH THỨC TT': '',
-        'NGÀY': currentDate,
-        'BUỔI': hour < 12 ? 'Buổi sáng' : 'Buổi chiều',
-        '_config': primaryKiosk.config,
-        '_hour': hour
-      });
-    }
-
-    // Tạo các dòng Thu viện phí (82% CK, 18% POS)
-    for (let i = 0; i < dist.vienPhi; i++) {
-      const isSelfKiosk = primaryKiosk.config === 'Tự thực hiện';
-      const staff = isSelfKiosk ? 'Bệnh nhân tự thực hiện' : staffList[(i + 2) % staffList.length];
-      const hour = 8 + (i % 9);
-      const min = (i * 4) % 60;
-      const hinhThuc = (i % 100 < 82) ? 'CK' : 'POS';
-
-      rawRows.push({
-        'STT': stt++,
-        'Ngày giờ thao tác': `${currentDate} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`,
-        'PID': `${2610000000 + stt}`,
-        'Họ tên': `BỆNH NHÂN ${stt}`,
-        'Checkin': '',
-        'Thu viện phí': 'x',
-        'Bán thuốc': '',
-        'Họ tên user': staff,
-        'Tên KIOS': primaryKiosk.machine,
-        'KHU VỰC': dist.area,
-        'HÌNH THỨC TT': hinhThuc,
-        'NGÀY': currentDate,
-        'BUỔI': hour < 12 ? 'Buổi sáng' : 'Buổi chiều',
-        '_config': primaryKiosk.config,
-        '_hour': hour
-      });
-    }
-
-    // Tạo các dòng Bán thuốc
-    for (let i = 0; i < dist.banThuoc; i++) {
-      const isSelfKiosk = primaryKiosk.config === 'Tự thực hiện';
-      const staff = isSelfKiosk ? 'Bệnh nhân tự thực hiện' : staffList[(i + 4) % staffList.length];
-      const hour = 10 + (i % 7);
-      const min = (i * 5) % 60;
-      const hinhThuc = (i % 100 < 82) ? 'CK' : 'POS';
-
-      rawRows.push({
-        'STT': stt++,
-        'Ngày giờ thao tác': `${currentDate} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`,
-        'PID': `${2610000000 + stt}`,
-        'Họ tên': `BỆNH NHÂN ${stt}`,
-        'Checkin': '',
-        'Thu viện phí': '',
-        'Bán thuốc': 'x',
-        'Họ tên user': staff,
-        'Tên KIOS': primaryKiosk.machine,
-        'KHU VỰC': dist.area,
-        'HÌNH THỨC TT': hinhThuc,
-        'NGÀY': currentDate,
-        'BUỔI': hour < 12 ? 'Buổi sáng' : 'Buổi chiều',
-        '_config': primaryKiosk.config,
-        '_hour': hour
-      });
-    }
-  });
-
-  return rawRows;
-}
-
-/**
- * Xử lý dữ liệu trực quan phục vụ Dashboard
- */
-export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {}) {
+export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {}, filterOptions = {}) {
   const {
     dateFilter = 'ALL',
     selectedShift = 'ALL',
     selectedArea = 'ALL',
-    selectedService = 'ALL',
     searchTerm = ''
   } = filterOptions;
 
+  const targetDaily = targetsInfo.totalDailyTarget || 3150;
+  const targetCLS = targetsInfo.totalTargetCLS || 2850;
+  const targetThuoc = targetsInfo.totalTargetThuoc || 300;
+
+  // Lọc dữ liệu chính xác
   const filteredRows = rawRows.filter(row => {
     if (dateFilter !== 'ALL') {
       const d = row['NGÀY'] || (row['Ngày giờ thao tác'] || '').split(' ')[0];
@@ -324,9 +217,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
     }
     if (selectedShift !== 'ALL' && row['BUỔI'] !== selectedShift) return false;
     if (selectedArea !== 'ALL' && row['KHU VỰC'] !== selectedArea) return false;
-    if (selectedService === 'CHECKIN' && !row['Checkin']) return false;
-    if (selectedService === 'VIEN_PHI' && !row['Thu viện phí']) return false;
-    if (selectedService === 'BAN_THUOC' && !row['Bán thuốc']) return false;
 
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
@@ -359,17 +249,16 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
     areaMap[a] = { area: a, checkin: 0, vienPhi: 0, banThuoc: 0, total: 0 };
   });
 
-  // Theo dõi theo giờ (06:00 - 18:00) cho máy Tự thực hiện và Toàn viện
+  // Theo dõi theo giờ (05:00 - 18:00) cho toàn viện và máy Tự thực hiện
   const hourlyGeneral = {};
   const hourlySelf = {};
-  for (let h = 6; h <= 18; h++) {
+  for (let h = 5; h <= 18; h++) {
     hourlyGeneral[h] = { hour: `${h}:00`, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
     hourlySelf[h] = { hour: `${h}:00`, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
   }
 
-  // Danh sách máy Kiosk
+  // Danh sách máy Kiosk & Nhân sự
   const kioskMap = {};
-  // Danh sách CSKH
   const staffMap = {};
 
   filteredRows.forEach(row => {
@@ -385,9 +274,10 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
     if (ht.includes('CK')) countCK++;
     else if (ht.includes('POS')) countPOS++;
 
-    // Nhận diện máy TỰ THỰC HIỆN
+    // Nhận diện cấu hình máy
     const machine = normalizeKioskName(row['Tên KIOS']);
-    const locConfig = locationsMap[machine]?.config || row['_config'] || 'CSKH hỗ trợ';
+    const locInfo = locationsMap[machine];
+    const locConfig = locInfo?.config || row['_config'] || 'CSKH hỗ trợ';
     const isSelfService = locConfig.toLowerCase().includes('tự thực hiện') || String(row['Họ tên user']).toLowerCase().includes('tự thực hiện');
 
     // Giờ thao tác
@@ -400,7 +290,7 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
       hour = parseInt(timePart.split(':')[0], 10);
     }
 
-    if (hour >= 6 && hour <= 18 && hourlyGeneral[hour]) {
+    if (hour >= 5 && hour <= 18 && hourlyGeneral[hour]) {
       hourlyGeneral[hour].total++;
       if (hasCheckin) hourlyGeneral[hour].checkin++;
       if (hasVienPhi) hourlyGeneral[hour].vienPhi++;
@@ -415,7 +305,7 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
       if (ht.includes('CK')) selfCountCK++;
       else if (ht.includes('POS')) selfCountPOS++;
 
-      if (hour >= 6 && hour <= 18 && hourlySelf[hour]) {
+      if (hour >= 5 && hour <= 18 && hourlySelf[hour]) {
         hourlySelf[hour].total++;
         if (hasCheckin) hourlySelf[hour].checkin++;
         if (hasVienPhi) hourlySelf[hour].vienPhi++;
@@ -423,8 +313,13 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
       }
     }
 
-    // Nhóm theo khu vực
-    const area = row['KHU VỰC'] || 'Khác';
+    // Nhóm theo khu vực (nếu 'Không thấy khu vực' mà máy đã biết vị trí thì tự map lại)
+    let area = row['KHU VỰC'] || '';
+    if ((!area || area === 'Không thấy khu vực') && locInfo?.area) {
+      area = locInfo.area;
+    }
+    if (!area) area = 'Khác';
+
     if (!areaMap[area]) {
       areaMap[area] = { area, checkin: 0, vienPhi: 0, banThuoc: 0, total: 0 };
     }
@@ -437,7 +332,7 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
     if (!kioskMap[machine]) {
       kioskMap[machine] = {
         machine,
-        area,
+        area: locInfo?.area || area,
         config: locConfig,
         count: 0,
         checkin: 0,
@@ -465,16 +360,12 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
     }
   });
 
-  const totalOps = filteredRows.length || 2193; // Mặc định khớp 2193 lượt nếu dữ liệu mẫu
-  const targetDaily = 3000;
-  const overallRate = totalOps > 0 ? ((totalOps / targetDaily) * 100).toFixed(1) : '72.8';
+  const totalOps = filteredRows.length;
+  const overallRate = totalOps > 0 ? ((totalOps / targetDaily) * 100).toFixed(1) : '0';
 
-  // Tỷ lệ hoàn thành mục tiêu từng dịch vụ
-  // Target: Đăng ký & Thu CLS = 2700, Bán thuốc = 300
-  const targetReg = 2700;
-  const targetMedicine = 300;
-  const regCompletedRate = (( (totalCheckin + totalVienPhi) / targetReg ) * 100).toFixed(1);
-  const medCompletedRate = (( totalBanThuoc / targetMedicine ) * 100).toFixed(1);
+  // Tỷ lệ hoàn thành theo từng mục tiêu
+  const regCompletedRate = targetCLS > 0 ? (((totalCheckin + totalVienPhi) / targetCLS) * 100).toFixed(1) : '0';
+  const medCompletedRate = targetThuoc > 0 ? (((totalBanThuoc) / targetThuoc) * 100).toFixed(1) : '0';
 
   // Tỷ lệ thanh toán
   const totalPaid = (countCK + countPOS) || 1;
@@ -507,14 +398,13 @@ export function aggregateKioskData(rawRows, locationsMap = {}, filterOptions = {
       selfCheckin,
       selfVienPhi,
       selfBanThuoc,
-      selfShareRate: totalOps > 0 ? ((selfTotal / totalOps) * 100).toFixed(1) : 0,
-      selfRateCK: (selfCountCK + selfCountPOS) > 0 ? ((selfCountCK / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : 0,
-      selfRatePOS: (selfCountCK + selfCountPOS) > 0 ? ((selfCountPOS / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : 0,
+      selfShareRate: totalOps > 0 ? ((selfTotal / totalOps) * 100).toFixed(1) : '0',
+      selfRateCK: (selfCountCK + selfCountPOS) > 0 ? ((selfCountCK / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : '0',
+      selfRatePOS: (selfCountCK + selfCountPOS) > 0 ? ((selfCountPOS / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : '0',
     },
     areaBreakdown,
     hourlyGeneralList,
     hourlySelfList,
-    historicalDays: HISTORICAL_DAYS_DATA,
     kiosks: Object.values(kioskMap).sort((a, b) => b.count - a.count),
     staff: Object.values(staffMap).sort((a, b) => b.total - a.total),
     filteredRows
