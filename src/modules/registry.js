@@ -1,5 +1,6 @@
 import bv01Module from './bv01-chua-ra-bill';
 import raSoatTamUngModule from './ra-soat-tam-ung';
+import vanHanhKioskModule from './van-hanh-kiosk';
 
 /**
  * Danh bạ Đăng ký Module Độc lập (Pluggable Registry)
@@ -9,6 +10,7 @@ import raSoatTamUngModule from './ra-soat-tam-ung';
 export const registeredModules = [
   bv01Module,
   raSoatTamUngModule,
+  vanHanhKioskModule,
 ];
 
 export function getModuleById(id) {
