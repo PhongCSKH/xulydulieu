@@ -5,7 +5,8 @@ import {
   Search, Building2, QrCode, FileText, Pill, 
   Settings, X, Sparkles, AlertCircle, ChevronLeft, 
   ChevronRight, Layers, Activity, BarChart3, Plus, 
-  Edit3, Trash2, RotateCcw, Check, Users, Cpu
+  Edit3, Trash2, RotateCcw, Check, Users, Cpu,
+  TrendingUp, Award, CheckCircle2
 } from 'lucide-react';
 
 import {
@@ -25,9 +26,10 @@ export default function VanHanhKioskView() {
   const [locationsList, setLocationsList] = useState([]);
   const [locationsMap, setLocationsMap] = useState({});
   const [targetsInfo, setTargetsInfo] = useState({
-    totalDailyTarget: 3150,
-    totalTargetCLS: 2850,
-    totalTargetThuoc: 300
+    totalDailyTarget: 0,
+    totalTargetCLS: 0,
+    totalTargetThuoc: 0,
+    targetsMap: {}
   });
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -78,7 +80,8 @@ export default function VanHanhKioskView() {
         setTargetsInfo({
           totalDailyTarget: res.totalDailyTarget,
           totalTargetCLS: res.totalTargetCLS,
-          totalTargetThuoc: res.totalTargetThuoc
+          totalTargetThuoc: res.totalTargetThuoc,
+          targetsMap: res.targetsMap
         });
         setLastSyncTime(new Date().toLocaleTimeString('vi-VN'));
         setSyncError(null);
@@ -200,7 +203,7 @@ export default function VanHanhKioskView() {
     return Array.from(s).sort().reverse();
   }, [rawRows]);
 
-  // Phân tích dữ liệu Dashboard
+  // Phân tích dữ liệu Dashboard 100% từ Sheet thực tế
   const analytics = useMemo(() => {
     return aggregateKioskData(rawRows, locationsMap, targetsInfo, {
       dateFilter,
@@ -231,6 +234,16 @@ export default function VanHanhKioskView() {
   const countSelfKiosks = useMemo(() => {
     return locationsList.filter(k => k.config === 'Tự thực hiện').length;
   }, [locationsList]);
+
+  // Tìm giá trị max cho biểu đồ năng suất theo giờ toàn viện
+  const maxHourlyGeneral = useMemo(() => {
+    return Math.max(...analytics.hourlyGeneralList.map(h => h.total), 1);
+  }, [analytics.hourlyGeneralList]);
+
+  // Tìm giá trị max cho biểu đồ năng suất máy tự thực hiện
+  const maxHourlySelf = useMemo(() => {
+    return Math.max(...analytics.hourlySelfList.map(h => h.total), 1);
+  }, [analytics.hourlySelfList]);
 
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-900 font-sans -m-6 p-6 space-y-6">
@@ -317,8 +330,8 @@ export default function VanHanhKioskView() {
                   : 'text-purple-700 hover:text-purple-900'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-              <span>Máy Tự Thực Hiện ({analytics.summary.selfTotal})</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Máy Tự Thực Hiện ({analytics.summary.selfTotal.toLocaleString()})</span>
             </button>
 
             <button
@@ -330,10 +343,9 @@ export default function VanHanhKioskView() {
               }`}
             >
               <Building2 className="w-3.5 h-3.5 text-teal-600" />
-              <span>Khoa Phòng &amp; Mục Tiêu</span>
+              <span>Khoa Phòng &amp; Mục Tiêu ({analytics.areaBreakdown.length})</span>
             </button>
 
-            {/* TAB MỚI: QUẢN LÝ CẤU HÌNH KIOSK */}
             <button
               onClick={() => setActiveTab('KIOSK_CONFIG')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -417,11 +429,755 @@ export default function VanHanhKioskView() {
       )}
 
       {/* ============================================================ */}
-      {/* 2. TAB QUẢN LÝ CẤU HÌNH KIOSK (SỬA, THÊM, XÓA, ĐỔI CÔNG NĂNG) */}
+      {/* 2. TAB TỔNG QUAN ĐIỀU HÀNH (OVERVIEW) */}
+      {/* ============================================================ */}
+      {activeTab === 'OVERVIEW' && (
+        <div className="space-y-6">
+          {/* 4 THẺ METRICS SÁNG TƯƠI, ĐỘ TƯƠNG PHẢN CAO, SỐ LIỆU CHÍNH XÁC */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Metric 1: Tổng Lượt Thực Tế */}
+            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
+                    Tổng Lượt Thực Tế
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-4xl font-black font-mono tracking-tight text-rose-600">
+                    {analytics.summary.totalOps.toLocaleString()}
+                  </span>
+                  <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                    lượt
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                <span>Mục tiêu ngày: <b className="text-slate-900 font-mono">{targetsInfo.totalDailyTarget > 0 ? `${targetsInfo.totalDailyTarget.toLocaleString()} lượt` : 'Chờ nạp'}</b></span>
+                {targetsInfo.totalDailyTarget > 0 && (
+                  <span className="font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                    Đạt {analytics.summary.overallRate}%
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Metric 2: Tiến Độ Mục Tiêu Ngày */}
+            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
+                    Tiến Độ Mục Tiêu Ngày
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Chỉ tiêu: {targetsInfo.totalDailyTarget.toLocaleString()} lượt
+                  </span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <span className="text-4xl font-black font-mono tracking-tight text-amber-600">
+                    {analytics.summary.overallRate}%
+                  </span>
+                  <span className="text-xs text-slate-600 font-mono font-bold">
+                    {analytics.summary.totalOps.toLocaleString()} / {targetsInfo.totalDailyTarget.toLocaleString()} lượt
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 space-y-1.5">
+                <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 relative">
+                  <div 
+                    className="bg-amber-500 h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${Math.min(100, Number(analytics.summary.overallRate))}%` }} 
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-600 font-medium">
+                  <span>Đã thực hiện: <b className="text-slate-900 font-bold">{analytics.summary.totalOps.toLocaleString()} lượt</b></span>
+                  <span>Còn lại: <b className="text-amber-700 font-bold">{Math.max(0, targetsInfo.totalDailyTarget - analytics.summary.totalOps).toLocaleString()} lượt</b></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Metric 3: Đăng Ký & Thu Viện Phí */}
+            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
+                    Đăng Ký &amp; Thu Viện Phí
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-4xl font-black font-mono tracking-tight text-blue-600">
+                    {(analytics.summary.totalCheckin + analytics.summary.totalVienPhi).toLocaleString()}
+                  </span>
+                  <span className="text-xs text-slate-600 font-mono font-bold">
+                    lượt ({analytics.summary.regCompletedRate}% chỉ tiêu)
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-blue-700 font-bold font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  Checkin: {analytics.summary.totalCheckin.toLocaleString()} lượt
+                </span>
+                <span className="text-amber-800 font-bold font-mono bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  Viện phí: {analytics.summary.totalVienPhi.toLocaleString()} lượt
+                </span>
+              </div>
+            </div>
+
+            {/* Metric 4: Cơ Cấu Thanh Toán */}
+            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
+                    Cơ Cấu Thanh Toán
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <span className="text-3xl font-black font-mono tracking-tight text-purple-700">
+                    {analytics.summary.rateCK}%
+                  </span>
+                  <span className="text-xs text-purple-900 font-bold bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                    Chuyển Khoản QR
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">
+                  Quẹt POS: <b className="text-teal-700 font-mono font-bold">{analytics.summary.ratePOS}%</b> ({analytics.summary.countPOS.toLocaleString()} lượt)
+                </span>
+                <span className="text-purple-700 font-bold font-mono">
+                  CK: {analytics.summary.countCK.toLocaleString()} lượt
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================ */}
+          {/* BIỂU ĐỒ NĂNG SUẤT THEO KHUNG GIỜ TRONG NGÀY (TOÀN VIỆN) */}
+          {/* CÓ KÈM NHÃN DỮ LIỆU HIỆN TRỰC TIẾP TRÊN TỪNG CỘT */}
+          {/* ============================================================ */}
+          <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center border border-teal-200">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-base font-black text-slate-900 tracking-tight uppercase">
+                    BIỂU ĐỒ NĂNG SUẤT THEO KHUNG GIỜ TRONG NGÀY (TOÀN VIỆN)
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Phân tích lưu lượng xử lý thực tế theo từng giờ phát sinh giao dịch trong ngày. <b>Đơn vị tiêu chuẩn: Lượt / Giờ</b>.
+                </p>
+              </div>
+
+              {/* Mốc dữ liệu thực tế: Đỉnh tải, Năng suất bình quân, Thời gian hoạt động */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {analytics.summary.peakHourGeneral.total > 0 && (
+                  <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Đỉnh tải thực tế: <b className="font-mono text-rose-950">{analytics.summary.peakHourGeneral.hour}</b> (<b className="font-mono">{analytics.summary.peakHourGeneral.total.toLocaleString()} lượt/giờ</b>)</span>
+                  </div>
+                )}
+
+                <div className="px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-bold flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Năng suất bình quân: <b className="font-mono text-teal-950">{analytics.summary.avgHourlyGeneral} lượt/giờ</b></span>
+                </div>
+
+                {analytics.summary.firstActivityTime !== '--:--' && (
+                  <div className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px] font-semibold flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Thời gian giao dịch: <b>{analytics.summary.firstActivityTime} → {analytics.summary.lastActivityTime}</b></span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Chú thích màu sắc */}
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-4 font-bold">
+                <span className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-blue-600"></span> Check-in ({analytics.summary.totalCheckin.toLocaleString()} lượt)
+                </span>
+                <span className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-amber-500"></span> Thu viện phí ({analytics.summary.totalVienPhi.toLocaleString()} lượt)
+                </span>
+                <span className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-emerald-600"></span> Bán thuốc ({analytics.summary.totalBanThuoc.toLocaleString()} lượt)
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 italic">
+                * Nhãn số trên đỉnh mỗi cột hiển thị tổng lượt giao dịch thực tế của khung giờ đó
+              </span>
+            </div>
+
+            {/* KHUNG BIỂU ĐỒ CỘT CÓ NHÃN SỐ HIỂN THỊ TRỰC TIẾP TRÊN ĐẦU CỘT */}
+            <div className="pt-6 pb-2">
+              <div className="h-64 flex items-end gap-2 sm:gap-3 border-b-2 border-slate-200 px-2">
+                {analytics.hourlyGeneralList.map((item) => {
+                  const pct = Math.round((item.total / maxHourlyGeneral) * 100);
+                  const isPeak = item.total > 0 && item.total === analytics.summary.peakHourGeneral.total;
+
+                  // Tính tỷ lệ chiều cao từng phân đoạn trong cột
+                  const pCheckin = item.total > 0 ? (item.checkin / item.total) * 100 : 0;
+                  const pVienPhi = item.total > 0 ? (item.vienPhi / item.total) * 100 : 0;
+                  const pBanThuoc = item.total > 0 ? (item.banThuoc / item.total) * 100 : 0;
+
+                  return (
+                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full justify-end group relative min-w-[28px]">
+                      {/* NHÃN DỮ LIỆU HIỆN TRỰC TIẾP TRÊN ĐỈNH CỘT (ALWAYS VISIBLE) */}
+                      <div className="mb-1.5 text-center flex flex-col items-center">
+                        {isPeak && (
+                          <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded mb-0.5 tracking-tighter whitespace-nowrap">
+                            Đỉnh
+                          </span>
+                        )}
+                        <span className={`text-[11px] sm:text-xs font-mono font-black ${
+                          isPeak ? 'text-rose-600 font-extrabold' : item.total > 0 ? 'text-slate-800' : 'text-slate-300'
+                        }`}>
+                          {item.total > 0 ? item.total : '0'}
+                        </span>
+                      </div>
+
+                      {/* Thân cột biểu đồ (Phân đoạn xếp chồng) */}
+                      <div 
+                        className={`w-full max-w-[36px] rounded-t-md overflow-hidden flex flex-col justify-end transition-all duration-300 border border-b-0 ${
+                          isPeak ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-300'
+                        } ${item.total === 0 ? 'bg-slate-100' : ''}`}
+                        style={{ height: `${Math.max(4, pct)}%` }}
+                        title={`${item.hour}: Tổng ${item.total} lượt (Checkin: ${item.checkin}, Viện phí: ${item.vienPhi}, Thuốc: ${item.banThuoc})`}
+                      >
+                        {item.total > 0 && (
+                          <>
+                            {item.banThuoc > 0 && (
+                              <div 
+                                className="bg-emerald-600 w-full" 
+                                style={{ height: `${pBanThuoc}%` }} 
+                              />
+                            )}
+                            {item.vienPhi > 0 && (
+                              <div 
+                                className="bg-amber-500 w-full" 
+                                style={{ height: `${pVienPhi}%` }} 
+                              />
+                            )}
+                            {item.checkin > 0 && (
+                              <div 
+                                className="bg-blue-600 w-full" 
+                                style={{ height: `${pCheckin}%` }} 
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Nhãn khung giờ dưới chân cột */}
+                      <div className="mt-2 text-center">
+                        <span className={`text-[11px] font-mono font-bold block ${
+                          isPeak ? 'text-rose-600 font-black' : 'text-slate-600'
+                        }`}>
+                          {item.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================ */}
+          {/* BẢNG PHÂN BỔ TẢI TRỌNG KHOA PHÒNG & KHU VỰC */}
+          {/* CÓ NHÃN SỐ TRỰC TIẾP TRÊN TỪNG KHỐI PHÂN ĐOẠN */}
+          {/* ============================================================ */}
+          <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Phân Bổ Tải Trọng Các Khoa Phòng &amp; Khu Vực
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Số lượt xử lý thực tế (Check-in + Viện Phí + Bán Thuốc) tại từng vị trí đặt máy
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs font-bold">
+                <span className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-blue-600"></span> Check-in
+                </span>
+                <span className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-amber-500"></span> Thu viện phí
+                </span>
+                <span className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-emerald-600"></span> Bán thuốc
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {analytics.areaBreakdown.map((item, idx) => {
+                const total = item.checkin + item.vienPhi + item.banThuoc;
+                const pCheckin = total > 0 ? (item.checkin / total) * 100 : 0;
+                const pVienPhi = total > 0 ? (item.vienPhi / total) * 100 : 0;
+                const pBanThuoc = total > 0 ? (item.banThuoc / total) * 100 : 0;
+
+                return (
+                  <div key={item.area} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-teal-400 hover:shadow-xs transition-all duration-200 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-slate-400 text-xs font-bold">#{idx + 1}</span>
+                        <span className="font-bold text-slate-900 text-sm">{item.area}</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-lg border border-teal-200">
+                        {total.toLocaleString()} lượt
+                      </span>
+                    </div>
+
+                    {/* Thanh phân bổ xếp chồng */}
+                    <div className="h-4 w-full bg-slate-200 rounded-full overflow-hidden flex border border-slate-200">
+                      {item.checkin > 0 && (
+                        <div 
+                          className="bg-blue-600 h-full transition-all" 
+                          style={{ width: `${pCheckin}%` }} 
+                        />
+                      )}
+                      {item.vienPhi > 0 && (
+                        <div 
+                          className="bg-amber-500 h-full transition-all" 
+                          style={{ width: `${pVienPhi}%` }} 
+                        />
+                      )}
+                      {item.banThuoc > 0 && (
+                        <div 
+                          className="bg-emerald-600 h-full transition-all" 
+                          style={{ width: `${pBanThuoc}%` }} 
+                        />
+                      )}
+                    </div>
+
+                    {/* NHÃN DỮ LIỆU HIỆN TRỰC TIẾP CHO TỪNG PHÂN ĐOẠN */}
+                    <div className="flex items-center justify-between text-xs font-mono font-semibold pt-0.5">
+                      <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        Checkin: <b>{item.checkin.toLocaleString()} lượt</b>
+                      </span>
+                      <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        Viện phí: <b>{item.vienPhi.toLocaleString()} lượt</b>
+                      </span>
+                      <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Thuốc: <b>{item.banThuoc.toLocaleString()} lượt</b>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 3. TAB MÁY TỰ THỰC HIỆN (SELF_SERVICE) */}
+      {/* ============================================================ */}
+      {activeTab === 'SELF_SERVICE' && (
+        <div className="space-y-6">
+          {/* 4 THẺ METRICS DÀNH RIÊNG CHO MÁY TỰ LÀM */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-5 rounded-3xl border border-purple-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-purple-700">Tổng Lượt Tự Làm</span>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black font-mono text-purple-700">
+                  {analytics.summary.selfTotal.toLocaleString()}
+                </span>
+                <span className="text-xs font-bold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                  lượt
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-purple-100 font-medium">
+                Chiếm <b className="text-purple-700 font-mono">{analytics.summary.selfShareRate}%</b> tổng giao dịch toàn viện
+              </p>
+            </div>
+
+            <div className="p-5 rounded-3xl border border-blue-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-blue-700">Tự Check-in</span>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black font-mono text-blue-600">
+                  {analytics.summary.selfCheckin.toLocaleString()}
+                </span>
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  lượt
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-blue-100 font-medium">
+                Tỷ trọng: <b className="text-blue-700 font-mono">{analytics.summary.selfTotal > 0 ? ((analytics.summary.selfCheckin / analytics.summary.selfTotal) * 100).toFixed(1) : 0}%</b> trên máy tự làm
+              </p>
+            </div>
+
+            <div className="p-5 rounded-3xl border border-amber-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-amber-700">Tự Nộp Viện Phí</span>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black font-mono text-amber-600">
+                  {analytics.summary.selfVienPhi.toLocaleString()}
+                </span>
+                <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  lượt
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-amber-100 font-medium">
+                Tỷ trọng: <b className="text-amber-700 font-mono">{analytics.summary.selfTotal > 0 ? ((analytics.summary.selfVienPhi / analytics.summary.selfTotal) * 100).toFixed(1) : 0}%</b> trên máy tự làm
+              </p>
+            </div>
+
+            <div className="p-5 rounded-3xl border border-emerald-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-emerald-700">Thanh Toán Tại Máy</span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-black font-mono text-emerald-700">
+                  CK {analytics.summary.selfRateCK}%
+                </span>
+                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  POS {analytics.summary.selfRatePOS}%
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-emerald-100 font-medium">
+                Bệnh nhân quét mã QR hoặc chạm thẻ trực tiếp
+              </p>
+            </div>
+          </div>
+
+          {/* BIỂU ĐỒ NĂNG SUẤT THEO KHUNG GIỜ - MÁY TỰ THỰC HIỆN */}
+          <div className="p-6 rounded-3xl border-2 border-purple-200 bg-white shadow-xs space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-purple-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center border border-purple-200">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <h2 className="text-base font-black text-purple-950 uppercase tracking-tight">
+                    BIỂU ĐỒ NĂNG SUẤT THEO KHUNG GIỜ - MÁY TỰ THỰC HIỆN
+                  </h2>
+                </div>
+                <p className="text-xs text-purple-800 font-medium mt-1">
+                  Đo lường năng suất người bệnh tự thao tác độc lập theo từng khung giờ trong ngày. <b>Đơn vị: Lượt tự làm / Giờ</b>.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {analytics.summary.peakHourSelf.total > 0 && (
+                  <div className="px-3 py-1.5 rounded-xl bg-purple-100 border border-purple-300 text-purple-950 font-bold flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-purple-700" />
+                    <span>Đỉnh tải tự làm thực tế: <b className="font-mono">{analytics.summary.peakHourSelf.hour}</b> (<b className="font-mono">{analytics.summary.peakHourSelf.total.toLocaleString()} lượt/giờ</b>)</span>
+                  </div>
+                )}
+                <div className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 font-bold">
+                  Năng suất bình quân: <b className="font-mono">{analytics.summary.avgHourlySelf} lượt/giờ</b>
+                </div>
+              </div>
+            </div>
+
+            {/* Khung cột biểu đồ tự làm có nhãn số trực tiếp */}
+            <div className="pt-6 pb-2">
+              <div className="h-56 flex items-end gap-2 sm:gap-3 border-b-2 border-purple-200 px-2">
+                {analytics.hourlySelfList.map((item) => {
+                  const pct = Math.round((item.total / maxHourlySelf) * 100);
+                  const isPeak = item.total > 0 && item.total === analytics.summary.peakHourSelf.total;
+
+                  return (
+                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full justify-end min-w-[28px]">
+                      {/* NHÃN DỮ LIỆU HIỆN TRỰC TIẾP TRÊN ĐỈNH CỘT (ALWAYS VISIBLE) */}
+                      <div className="mb-1.5 text-center flex flex-col items-center">
+                        {isPeak && (
+                          <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 border border-purple-300 px-1 py-0.2 rounded mb-0.5 tracking-tighter whitespace-nowrap">
+                            Đỉnh
+                          </span>
+                        )}
+                        <span className={`text-[11px] sm:text-xs font-mono font-black ${
+                          isPeak ? 'text-purple-700 font-extrabold' : item.total > 0 ? 'text-slate-800' : 'text-slate-300'
+                        }`}>
+                          {item.total > 0 ? item.total : '0'}
+                        </span>
+                      </div>
+
+                      {/* Thân cột */}
+                      <div 
+                        className={`w-full max-w-[36px] bg-purple-600 rounded-t-md transition-all duration-300 border border-b-0 ${
+                          isPeak ? 'border-purple-800 ring-2 ring-purple-300' : 'border-purple-700'
+                        }`}
+                        style={{ height: `${Math.max(4, pct)}%` }}
+                        title={`${item.hour}: ${item.total} lượt tự làm`}
+                      />
+
+                      {/* Nhãn khung giờ */}
+                      <div className="mt-2 text-center">
+                        <span className={`text-[11px] font-mono font-bold block ${
+                          isPeak ? 'text-purple-700 font-black' : 'text-slate-600'
+                        }`}>
+                          {item.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* BẢNG XẾP HẠNG CÁC MÁY TỰ THỰC HIỆN */}
+          <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase">
+                  DANH SÁCH &amp; NĂNG SUẤT CÁC MÁY CẤU HÌNH "TỰ THỰC HIỆN"
+                </h3>
+                <p className="text-xs text-slate-500">Hiệu quả vận hành của từng máy tự phục vụ bệnh nhân</p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 font-mono">
+                {analytics.selfKiosks.length} Máy hoạt động
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="border-b border-slate-200 bg-slate-100 text-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-3 px-3 w-12 text-center">STT</th>
+                    <th className="py-3 px-4">Tên Máy Kiosk</th>
+                    <th className="py-3 px-4">Vị Trí Đặt Máy</th>
+                    <th className="py-3 px-4 text-center">Tổng Lượt Tự Làm</th>
+                    <th className="py-3 px-4 text-center">Tự Check-in</th>
+                    <th className="py-3 px-4 text-center">Tự Viện Phí</th>
+                    <th className="py-3 px-4 text-center">Tự Bán Thuốc</th>
+                    <th className="py-3 px-4 text-center">Giao Dịch Gần Nhất</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {analytics.selfKiosks.map((k, i) => (
+                    <tr key={k.machine} className="hover:bg-purple-50/40 transition">
+                      <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold">{i + 1}</td>
+                      <td className="py-3 px-4 font-mono font-black text-sm text-purple-800">{k.machine}</td>
+                      <td className="py-3 px-4 font-medium text-slate-800">{k.area}</td>
+                      <td className="py-3 px-4 text-center font-mono font-black text-sm text-purple-700 bg-purple-50/70">
+                        {k.count.toLocaleString()} lượt
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-blue-700">
+                        {k.checkin.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-amber-700">
+                        {k.vienPhi.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-emerald-700">
+                        {k.banThuoc.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono text-slate-500">
+                        {k.lastActiveTime || '--'}
+                      </td>
+                    </tr>
+                  ))}
+                  {analytics.selfKiosks.length === 0 && (
+                    <tr>
+                      <td colSpan="8" className="py-8 text-center text-slate-400">
+                        Chưa có máy Kiosk nào cấu hình "Tự thực hiện" hoặc chưa có giao dịch phát sinh.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 4. TAB KHOA PHÒNG & MỤC TIÊU (DEPARTMENTS) */}
+      {/* ĐỐI CHIẾU THỰC TẾ VS SHEET MỤC TIÊU 100% */}
+      {/* ============================================================ */}
+      {activeTab === 'DEPARTMENTS' && (
+        <div className="space-y-6">
+          {/* TỔNG KẾT MỤC TIÊU TOÀN VIỆN TỪ SHEET */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-slate-500">Tổng Chỉ Tiêu Toàn Viện</span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black font-mono text-slate-900">
+                  {targetsInfo.totalDailyTarget.toLocaleString()} lượt
+                </span>
+                <span className="text-xs font-bold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
+                  Đạt {analytics.summary.overallRate}%
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                Thực tế đạt được: <b className="text-teal-700 font-mono font-bold">{analytics.summary.totalOps.toLocaleString()} lượt</b>
+              </p>
+            </div>
+
+            <div className="p-5 rounded-3xl border border-blue-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-blue-700">Chỉ Tiêu Đăng Ký &amp; Thu CLS</span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black font-mono text-blue-700">
+                  {targetsInfo.totalTargetCLS.toLocaleString()} lượt
+                </span>
+                <span className="text-xs font-bold text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                  Đạt {analytics.summary.regCompletedRate}%
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-blue-100">
+                Thực tế: <b className="text-blue-700 font-mono font-bold">{(analytics.summary.totalCheckin + analytics.summary.totalVienPhi).toLocaleString()} lượt</b>
+              </p>
+            </div>
+
+            <div className="p-5 rounded-3xl border border-emerald-200 bg-white shadow-xs">
+              <span className="text-xs font-bold uppercase text-emerald-700">Chỉ Tiêu Bán Thuốc</span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black font-mono text-emerald-700">
+                  {targetsInfo.totalTargetThuoc.toLocaleString()} lượt
+                </span>
+                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Đạt {analytics.summary.medCompletedRate}%
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-emerald-100">
+                Thực tế: <b className="text-emerald-700 font-mono font-bold">{analytics.summary.totalBanThuoc.toLocaleString()} lượt</b>
+              </p>
+            </div>
+          </div>
+
+          {/* BẢNG ĐỐI CHIẾU TIẾN ĐỘ TỪNG KHOA PHÒNG VS SHEET MỤC TIÊU */}
+          <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 uppercase">
+                  BẢNG ĐỐI CHIẾU TIẾN ĐỘ THỰC TẾ VS MỤC TIÊU TỪNG KHOA PHÒNG
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Khớp nối 100% giữa Sheet DỮ LIỆU TỔNG và Sheet MỤC TIÊU (Có chia mục tiêu Ca Sáng / Ca Chiều)
+                </p>
+              </div>
+              <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
+                {analytics.areaBreakdown.length} Khoa phòng
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="border-b border-slate-200 bg-slate-100 text-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-3 px-3 w-12 text-center">STT</th>
+                    <th className="py-3 px-4">Khoa Phòng / Khu Vực</th>
+                    <th className="py-3 px-4 text-center">Thực Tế CLS / Chỉ Tiêu</th>
+                    <th className="py-3 px-4 text-center w-36">% Đạt CLS</th>
+                    <th className="py-3 px-4 text-center">Thực Tế Thuốc / Chỉ Tiêu</th>
+                    <th className="py-3 px-4 text-center w-36">% Đạt Thuốc</th>
+                    <th className="py-3 px-4 text-center">Tổng Thực Tế / Chỉ Tiêu</th>
+                    <th className="py-3 px-4 text-center">Chỉ Tiêu Ca Sáng/Chiều</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {analytics.areaBreakdown.map((item, idx) => {
+                    const rateTotalNum = Number(item.rateTotal);
+                    const isCompleted = item.totalTarget > 0 && rateTotalNum >= 100;
+
+                    return (
+                      <tr key={item.area} className="hover:bg-slate-50 transition">
+                        <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold">{idx + 1}</td>
+                        <td className="py-3 px-4 font-bold text-slate-900 text-sm">
+                          <div className="flex items-center gap-1.5">
+                            {isCompleted && <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
+                            <span>{item.area}</span>
+                          </div>
+                        </td>
+
+                        {/* CLS Thực tế / Mục tiêu */}
+                        <td className="py-3 px-4 text-center font-mono font-bold">
+                          <span className="text-blue-700">{item.clsActual.toLocaleString()}</span>
+                          <span className="text-slate-400"> / </span>
+                          <span className="text-slate-700">{item.targetCLS > 0 ? item.targetCLS.toLocaleString() : '--'}</span>
+                        </td>
+
+                        {/* % Đạt CLS có thanh progress và nhãn số trực tiếp */}
+                        <td className="py-3 px-4 text-center">
+                          <div className="space-y-1">
+                            <span className="font-mono font-bold text-xs text-blue-700 block">
+                              {item.targetCLS > 0 ? `${item.rateCLS}%` : '--'}
+                            </span>
+                            {item.targetCLS > 0 && (
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                                <div 
+                                  className="bg-blue-600 h-full rounded-full" 
+                                  style={{ width: `${Math.min(100, Number(item.rateCLS))}%` }} 
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Thuốc Thực tế / Mục tiêu */}
+                        <td className="py-3 px-4 text-center font-mono font-bold">
+                          <span className="text-emerald-700">{item.medActual.toLocaleString()}</span>
+                          <span className="text-slate-400"> / </span>
+                          <span className="text-slate-700">{item.targetThuoc > 0 ? item.targetThuoc.toLocaleString() : '--'}</span>
+                        </td>
+
+                        {/* % Đạt Thuốc có thanh progress và nhãn số trực tiếp */}
+                        <td className="py-3 px-4 text-center">
+                          <div className="space-y-1">
+                            <span className="font-mono font-bold text-xs text-emerald-700 block">
+                              {item.targetThuoc > 0 ? `${item.rateThuoc}%` : '--'}
+                            </span>
+                            {item.targetThuoc > 0 && (
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                                <div 
+                                  className="bg-emerald-600 h-full rounded-full" 
+                                  style={{ width: `${Math.min(100, Number(item.rateThuoc))}%` }} 
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Tổng Thực tế / Chỉ tiêu & % Hoàn thành tổng */}
+                        <td className="py-3 px-4 text-center font-mono">
+                          <div className="font-black text-slate-900 text-sm">
+                            {item.totalActual.toLocaleString()} <span className="text-slate-400 font-normal">/</span> {item.totalTarget > 0 ? item.totalTarget.toLocaleString() : '--'}
+                          </div>
+                          {item.totalTarget > 0 && (
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border inline-block mt-0.5 ${
+                              isCompleted 
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}>
+                              {item.rateTotal}% tiến độ
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Chỉ tiêu theo ca từ Sheet */}
+                        <td className="py-3 px-4 text-center font-mono text-[11px] text-slate-600">
+                          <div>Sáng: <b>{item.clsSang + item.thuocSang}</b> (CLS: {item.clsSang}, Thuốc: {item.thuocSang})</div>
+                          <div>Chiều: <b>{item.clsChieu + item.thuocChieu}</b> (CLS: {item.clsChieu}, Thuốc: {item.thuocChieu})</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 5. TAB QUẢN LÝ CẤU HÌNH KIOSK (KIOSK_CONFIG) */}
       {/* ============================================================ */}
       {activeTab === 'KIOSK_CONFIG' && (
         <div className="space-y-5">
-          {/* Header Quản Lý Kiosk & Các Nút Thao Tác */}
           <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
@@ -575,7 +1331,7 @@ export default function VanHanhKioskView() {
                         <td className="py-3 px-4 text-center font-mono font-bold">
                           {txCount > 0 ? (
                             <span className="text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                              {txCount} lượt
+                              {txCount.toLocaleString()} lượt
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">--</span>
@@ -613,407 +1369,104 @@ export default function VanHanhKioskView() {
       )}
 
       {/* ============================================================ */}
-      {/* CÁC PHÂN HỆ DASHBOARD KHÁC (OVERVIEW / SELF_SERVICE / DEPARTMENTS / LOGS) */}
+      {/* 6. TAB LOGS: NHẬT KÝ CHI TIẾT SÁNG RÕ */}
       {/* ============================================================ */}
-      {activeTab !== 'KIOSK_CONFIG' && (
-        <>
-          {/* DẢI 4 THẺ METRICS SÁNG TƯƠI, ĐỘ TƯƠNG PHẢN CAO */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Metric 1: Tổng Lượt Thực Tế */}
-            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
-                    Tổng Lượt Thực Tế
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-4xl font-black font-mono tracking-tight text-rose-600">
-                    {analytics.summary.totalOps.toLocaleString()}
-                  </span>
-                  <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                    Chính xác
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                <span>Mục tiêu ngày: <b className="text-slate-900 font-mono">{targetsInfo.totalDailyTarget.toLocaleString()}</b></span>
-                <span className="font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
-                  Đạt {analytics.summary.overallRate}%
-                </span>
-              </div>
+      {activeTab === 'LOGS' && (
+        <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Nhật Ký Dữ Liệu Đồng Bộ Trực Tiếp Từ Sheet</h3>
+              <p className="text-xs text-slate-500">Khớp 100% từng dòng trên Google Sheet của bạn ({rawRows.length.toLocaleString()} dòng)</p>
             </div>
-
-            {/* Metric 2: Tiến Độ Mục Tiêu Ngày */}
-            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
-                    Tiến Độ Mục Tiêu Ngày
-                  </span>
-                  <span className="text-xs font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    Chỉ tiêu: {targetsInfo.totalDailyTarget.toLocaleString()}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-baseline justify-between">
-                  <span className="text-4xl font-black font-mono tracking-tight text-amber-600">
-                    {analytics.summary.overallRate}%
-                  </span>
-                  <span className="text-xs text-slate-600 font-mono font-bold">
-                    {analytics.summary.totalOps} / {targetsInfo.totalDailyTarget}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 space-y-1.5">
-                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200">
-                  <div 
-                    className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                    style={{ width: `${Math.min(100, analytics.summary.overallRate)}%` }} 
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-600 font-medium">
-                  <span>Đã xong: <b className="text-slate-900">{analytics.summary.totalOps}</b></span>
-                  <span>Còn thiếu: <b className="text-amber-700">{Math.max(0, targetsInfo.totalDailyTarget - analytics.summary.totalOps)}</b></span>
-                </div>
-              </div>
-            </div>
-
-            {/* Metric 3: Đăng Ký & Thu Viện Phí */}
-            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
-                    Đăng Ký &amp; Thu Viện Phí
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-4xl font-black font-mono tracking-tight text-blue-600">
-                    {analytics.summary.regCompletedRate}%
-                  </span>
-                  <span className="text-xs text-slate-600 font-mono font-bold">
-                    ({(analytics.summary.totalCheckin + analytics.summary.totalVienPhi).toLocaleString()} lượt)
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-blue-700 font-bold font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Checkin: {analytics.summary.totalCheckin}</span>
-                <span className="text-amber-800 font-bold font-mono bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Viện phí: {analytics.summary.totalVienPhi}</span>
-              </div>
-            </div>
-
-            {/* Metric 4: Cơ Cấu Thanh Toán */}
-            <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold tracking-wider text-slate-500 uppercase">
-                    Cơ Cấu Thanh Toán
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200">
-                    <QrCode className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2 flex items-baseline justify-between">
-                  <span className="text-4xl font-black font-mono tracking-tight text-purple-700">
-                    {analytics.summary.rateCK}%
-                  </span>
-                  <span className="text-xs text-purple-900 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                    Chuyển Khoản QR
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Quẹt thẻ POS: <b className="text-teal-700 font-mono font-bold">{analytics.summary.ratePOS}%</b></span>
-                <span className="text-purple-700 font-bold font-mono">CK: {analytics.summary.countCK}</span>
-              </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="PID, Tên, Kiosk..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:ring-1 focus:ring-teal-500 font-medium"
+              />
             </div>
           </div>
 
-          {/* 3. PHÂN HỆ ĐỘC QUYỀN: MÁY TỰ THỰC HIỆN */}
-          <div className="p-6 rounded-3xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/80 via-white to-purple-50/40 shadow-xs space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-purple-200/80 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md shadow-purple-600/30">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-black text-purple-950 uppercase tracking-wide">
-                      PHÂN TÍCH CHUYÊN SÂU: CÁC MÁY CẤU HÌNH "TỰ THỰC HIỆN"
-                    </h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-100 text-purple-800 border border-purple-300">
-                      {countSelfKiosks} MÁY TỰ LÀM
-                    </span>
-                  </div>
-                  <p className="text-xs text-purple-800 font-medium mt-0.5">
-                    Tự động nhận diện tất cả máy có cấu hình "Tự thực hiện" do bạn thiết lập để tổng hợp số liệu
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="text-right bg-white px-4 py-2 rounded-2xl border border-purple-200 shadow-2xs">
-                  <span className="text-[11px] text-slate-500 font-bold block">Tỷ lệ tự phục vụ:</span>
-                  <span className="text-xl font-black font-mono text-purple-700">
-                    {analytics.summary.selfShareRate}% toàn viện
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-4 rounded-2xl border border-purple-200 bg-white shadow-2xs">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                  Tổng Lượt Tự Làm
-                </span>
-                <span className="text-3xl font-black font-mono text-purple-700 mt-1 block">
-                  {analytics.summary.selfTotal.toLocaleString()}
-                </span>
-                <span className="text-[11px] text-slate-500 font-medium">Bệnh nhân tự thao tác</span>
-              </div>
-
-              <div className="p-4 rounded-2xl border border-blue-200 bg-white shadow-2xs">
-                <span className="text-[11px] font-bold uppercase text-blue-700 block">Tự Check-in</span>
-                <span className="text-3xl font-black font-mono text-blue-600 mt-1 block">
-                  {analytics.summary.selfCheckin}
-                </span>
-                <span className="text-[11px] text-slate-500 font-medium">
-                  {analytics.summary.selfTotal > 0 ? ((analytics.summary.selfCheckin / analytics.summary.selfTotal) * 100).toFixed(1) : 0}% trên máy tự làm
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl border border-amber-200 bg-white shadow-2xs">
-                <span className="text-[11px] font-bold uppercase text-amber-700 block">Tự Nộp Viện Phí</span>
-                <span className="text-3xl font-black font-mono text-amber-600 mt-1 block">
-                  {analytics.summary.selfVienPhi}
-                </span>
-                <span className="text-[11px] text-slate-500 font-medium">
-                  {analytics.summary.selfTotal > 0 ? ((analytics.summary.selfVienPhi / analytics.summary.selfTotal) * 100).toFixed(1) : 0}% trên máy tự làm
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl border border-emerald-200 bg-white shadow-2xs">
-                <span className="text-[11px] font-bold uppercase text-emerald-700 block">Thanh Toán Tại Máy</span>
-                <span className="text-lg font-black font-mono text-emerald-700 mt-1 block">
-                  CK {analytics.summary.selfRateCK}% - POS {analytics.summary.selfRatePOS}%
-                </span>
-                <span className="text-[11px] text-slate-500 font-medium">Quét mã QR trực tiếp</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-purple-200 bg-white shadow-2xs">
-              <div className="flex items-center justify-between mb-2 text-xs font-bold text-slate-700">
-                <span className="text-purple-950 uppercase tracking-wide">
-                  Lưu lượng bệnh nhân tự thao tác theo khung giờ (05:00 - 18:00)
-                </span>
-                <span className="text-purple-700 font-mono bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                  Đỉnh tự làm: 08:00 - 10:00
-                </span>
-              </div>
-
-              <div className="h-28 flex items-end gap-1.5 pt-4 pb-1 border-b border-slate-100">
-                {analytics.hourlySelfList.map((item) => {
-                  const maxSelf = Math.max(...analytics.hourlySelfList.map(s => s.total), 1);
-                  const pct = Math.round((item.total / maxSelf) * 100);
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="border-b border-slate-200 bg-slate-100/90 text-slate-800 text-[11px] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-2.5 px-3 w-12 text-center">STT</th>
+                  <th className="py-2.5 px-3">Thời Gian</th>
+                  <th className="py-2.5 px-3">PID</th>
+                  <th className="py-2.5 px-4">Bệnh Nhân</th>
+                  <th className="py-2.5 px-3">Kiosk</th>
+                  <th className="py-2.5 px-3">Khu Vực</th>
+                  <th className="py-2.5 px-3 text-center">Dịch Vụ</th>
+                  <th className="py-2.5 px-3 text-center">Hình Thức TT</th>
+                  <th className="py-2.5 px-4">Người Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedItems.map((r, i) => {
+                  const stt = (currentPage - 1) * pageSize + i + 1;
+                  const isSelf = String(r['Họ tên user'] || '').toLowerCase().includes('tự thực hiện');
 
                   return (
-                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                      <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition bg-slate-900 text-white text-[10px] rounded px-2 py-1 shadow-lg pointer-events-none whitespace-nowrap z-20 font-mono font-bold">
-                        {item.hour}: {item.total} lượt tự làm
-                      </div>
-                      <div 
-                        className="w-full max-w-[22px] bg-purple-600 rounded-t-sm transition-all duration-300"
-                        style={{ height: `${Math.max(6, pct)}%` }}
-                      />
-                      <span className="text-[10px] font-mono text-slate-500 mt-1 font-semibold">
-                        {item.hour.split(':')[0]}h
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* 4. BIỂU ĐỒ PHÂN BỔ KHOA PHÒNG */}
-          {activeTab === 'OVERVIEW' && (
-            <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                    Phân Bổ Tải Trọng Toàn Viện (Check-in + Viện Phí + Bán Thuốc)
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Số liệu thực tế chính xác 100% từ từng dòng Google Sheet
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-4 text-xs font-bold">
-                  <span className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-blue-600"></span> Checkin ({analytics.summary.totalCheckin})
-                  </span>
-                  <span className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> Thu viện phí ({analytics.summary.totalVienPhi})
-                  </span>
-                  <span className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-emerald-600"></span> Bán thuốc ({analytics.summary.totalBanThuoc})
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {analytics.areaBreakdown.map((item, idx) => {
-                  const total = item.checkin + item.vienPhi + item.banThuoc;
-                  const pCheckin = total > 0 ? (item.checkin / total) * 100 : 0;
-                  const pVienPhi = total > 0 ? (item.vienPhi / total) * 100 : 0;
-                  const pBanThuoc = total > 0 ? (item.banThuoc / total) * 100 : 0;
-
-                  return (
-                    <div key={item.area} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-teal-400 hover:shadow-xs transition-all duration-200">
-                      <div className="flex items-center justify-between text-xs mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-slate-400 text-xs font-bold">#{idx + 1}</span>
-                          <span className="font-bold text-slate-900">{item.area}</span>
+                    <tr key={r['STT'] || stt} className="hover:bg-slate-50 transition">
+                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{stt}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-600 font-medium">{r['Ngày giờ thao tác']}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{r['PID']}</td>
+                      <td className="py-2.5 px-4 font-bold text-slate-800">{r['Họ tên']}</td>
+                      <td className="py-2.5 px-3 font-mono text-teal-700 font-bold">{r['Tên KIOS']}</td>
+                      <td className="py-2.5 px-3 text-slate-700 font-medium">{r['KHU VỰC']}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1 font-bold">
+                          {r['Checkin'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-200">Checkin</span>}
+                          {r['Thu viện phí'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-900 border border-amber-200">Viện phí</span>}
+                          {r['Bán thuốc'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-200">Thuốc</span>}
                         </div>
-                        <span className="font-mono font-black text-sm text-teal-700">
-                          {total.toLocaleString()} <span className="text-[11px] text-slate-500 font-normal">lượt</span>
-                        </span>
-                      </div>
-
-                      <div className="h-3.5 w-full bg-slate-200 rounded-full overflow-hidden flex border border-slate-200">
-                        <div 
-                          className="bg-blue-600 h-full transition-all" 
-                          style={{ width: `${pCheckin}%` }} 
-                          title={`Checkin: ${item.checkin}`}
-                        />
-                        <div 
-                          className="bg-amber-500 h-full transition-all" 
-                          style={{ width: `${pVienPhi}%` }} 
-                          title={`Viện phí: ${item.vienPhi}`}
-                        />
-                        <div 
-                          className="bg-emerald-600 h-full transition-all" 
-                          style={{ width: `${pBanThuoc}%` }} 
-                          title={`Bán thuốc: ${item.banThuoc}`}
-                        />
-                      </div>
-
-                      <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 font-mono font-semibold">
-                        <span>Checkin: <b className="text-blue-700">{item.checkin}</b></span>
-                        <span>Viện phí: <b className="text-amber-700">{item.vienPhi}</b></span>
-                        <span>Thuốc: <b className="text-emerald-700">{item.banThuoc}</b></span>
-                      </div>
-                    </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
+                        {r['HÌNH THỨC TT'] || '--'}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        {isSelf ? (
+                          <span className="font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded text-[11px] border border-purple-200">
+                            Tự thực hiện
+                          </span>
+                        ) : (
+                          <span className="text-slate-700 font-medium">{r['Họ tên user']}</span>
+                        )}
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+            <span>
+              Hiển thị <b>{(currentPage - 1) * pageSize + 1}</b> - <b>{Math.min(currentPage * pageSize, analytics.filteredRows.length)}</b> / <b>{analytics.filteredRows.length.toLocaleString()}</b>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 cursor-pointer shadow-2xs"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="px-2 font-bold font-mono">{currentPage} / {totalPages}</span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 cursor-pointer shadow-2xs"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-          )}
-
-          {/* 5. TAB LOGS: NHẬT KÝ CHI TIẾT SÁNG RÕ */}
-          {activeTab === 'LOGS' && (
-            <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Nhật Ký Dữ Liệu Đồng Bộ Trực Tiếp Từ Sheet</h3>
-                  <p className="text-xs text-slate-500">Khớp 100% từng dòng trên Google Sheet của bạn ({rawRows.length.toLocaleString()} dòng)</p>
-                </div>
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="PID, Tên, Kiosk..."
-                    value={searchTerm}
-                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                    className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:ring-1 focus:ring-teal-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="border-b border-slate-200 bg-slate-100/90 text-slate-800 text-[11px] font-bold uppercase tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3 w-12 text-center">STT</th>
-                      <th className="py-2.5 px-3">Thời Gian</th>
-                      <th className="py-2.5 px-3">PID</th>
-                      <th className="py-2.5 px-4">Bệnh Nhân</th>
-                      <th className="py-2.5 px-3">Kiosk</th>
-                      <th className="py-2.5 px-3">Khu Vực</th>
-                      <th className="py-2.5 px-3 text-center">Dịch Vụ</th>
-                      <th className="py-2.5 px-3 text-center">Hình Thức TT</th>
-                      <th className="py-2.5 px-4">Người Thao Tác</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedItems.map((r, i) => {
-                      const stt = (currentPage - 1) * pageSize + i + 1;
-                      const isSelf = String(r['Họ tên user'] || '').toLowerCase().includes('tự thực hiện');
-
-                      return (
-                        <tr key={r['STT'] || stt} className="hover:bg-slate-50 transition">
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{stt}</td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600 font-medium">{r['Ngày giờ thao tác']}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{r['PID']}</td>
-                          <td className="py-2.5 px-4 font-bold text-slate-800">{r['Họ tên']}</td>
-                          <td className="py-2.5 px-3 font-mono text-teal-700 font-bold">{r['Tên KIOS']}</td>
-                          <td className="py-2.5 px-3 text-slate-700 font-medium">{r['KHU VỰC']}</td>
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1 font-bold">
-                              {r['Checkin'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-200">Checkin</span>}
-                              {r['Thu viện phí'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-900 border border-amber-200">Viện phí</span>}
-                              {r['Bán thuốc'] && <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-200">Thuốc</span>}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
-                            {r['HÌNH THỨC TT'] || '--'}
-                          </td>
-                          <td className="py-2.5 px-4">
-                            {isSelf ? (
-                              <span className="font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded text-[11px] border border-purple-200">
-                                Tự thực hiện
-                              </span>
-                            ) : (
-                              <span className="text-slate-700 font-medium">{r['Họ tên user']}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
-                <span>
-                  Hiển thị <b>{(currentPage - 1) * pageSize + 1}</b> - <b>{Math.min(currentPage * pageSize, analytics.filteredRows.length)}</b> / <b>{analytics.filteredRows.length.toLocaleString()}</b>
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 cursor-pointer shadow-2xs"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="px-2 font-bold font-mono">{currentPage} / {totalPages}</span>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 cursor-pointer shadow-2xs"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
 
       {/* ============================================================ */}

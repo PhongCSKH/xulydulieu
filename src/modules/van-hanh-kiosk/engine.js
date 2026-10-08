@@ -223,21 +223,42 @@ export async function syncAllKioskSheets(config = DEFAULT_SHEET_CONFIG) {
 
   // Phân tích sheet Mục tiêu
   const targetsMap = {};
-  let totalTargetCLS = 2850;
-  let totalTargetThuoc = 300;
+  let totalTargetCLS = 0;
+  let totalTargetThuoc = 0;
 
   targetRows.forEach(r => {
     const khuVuc = cleanStr(r['KHU VỰC'] || '');
     const cls = parseInt(r['ĐĂNG KÝ & THU CLS'] || r['DANG KY & THU CLS'] || '0', 10) || 0;
     const thuoc = parseInt(r['BÁN THUỐC'] || r['BAN THUOC'] || '0', 10) || 0;
+    const clsSang = parseInt(r['Checkin & Thu viện phí (Sáng)'] || '0', 10) || 0;
+    const thuocSang = parseInt(r['Bán thuốc (Sáng)'] || '0', 10) || 0;
+    const clsChieu = parseInt(r['Checkin & Thu viện phí (Chiều)'] || '0', 10) || 0;
+    const thuocChieu = parseInt(r['Bán thuốc (Chiều)'] || '0', 10) || 0;
 
     if (khuVuc.includes('mục tiêu') || khuVuc.includes('muc tieu') || khuVuc.includes('tổng')) {
       if (cls > 0) totalTargetCLS = cls;
       if (thuoc > 0) totalTargetThuoc = thuoc;
     } else if (khuVuc) {
-      targetsMap[khuVuc] = { targetCLS: cls, targetThuoc: thuoc, totalTarget: cls + thuoc };
+      targetsMap[khuVuc] = {
+        areaRaw: r['KHU VỰC'],
+        targetCLS: cls,
+        targetThuoc: thuoc,
+        totalTarget: cls + thuoc,
+        clsSang,
+        thuocSang,
+        clsChieu,
+        thuocChieu
+      };
     }
   });
+
+  // Nếu sheet Mục tiêu không có dòng tổng "MỤC TIÊU", tự cộng từ các khoa phòng thực tế trong Sheet
+  if (totalTargetCLS === 0 && totalTargetThuoc === 0) {
+    Object.values(targetsMap).forEach(t => {
+      totalTargetCLS += t.targetCLS;
+      totalTargetThuoc += t.targetThuoc;
+    });
+  }
 
   return {
     dataRows,
@@ -261,9 +282,10 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
     searchTerm = ''
   } = filterOptions;
 
-  const targetDaily = targetsInfo.totalDailyTarget || 3150;
-  const targetCLS = targetsInfo.totalTargetCLS || 2850;
-  const targetThuoc = targetsInfo.totalTargetThuoc || 300;
+  const targetDaily = Number(targetsInfo.totalDailyTarget || 0);
+  const targetCLS = Number(targetsInfo.totalTargetCLS || 0);
+  const targetThuoc = Number(targetsInfo.totalTargetThuoc || 0);
+  const targetsMap = targetsInfo.targetsMap || {};
 
   const filteredRows = rawRows.filter(row => {
     if (dateFilter !== 'ALL') {
@@ -298,17 +320,45 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   let selfCountCK = 0;
   let selfCountPOS = 0;
 
+  // Quét tìm khung giờ thực tế có trong dữ liệu (không bỏ sót bất kỳ giao dịch nào)
+  let minHour = 24;
+  let maxHour = -1;
+
+  filteredRows.forEach(row => {
+    const rawTime = row['Ngày giờ thao tác'] || '';
+    let hour = -1;
+    if (row['_hour'] !== undefined) {
+      hour = Number(row['_hour']);
+    } else if (rawTime.includes(':')) {
+      const timePart = rawTime.split(' ')[1] || rawTime;
+      hour = parseInt(timePart.split(':')[0], 10);
+    }
+    if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+      if (hour < minHour) minHour = hour;
+      if (hour > maxHour) maxHour = hour;
+    }
+  });
+
+  if (minHour === 24 || maxHour === -1) {
+    minHour = 4;
+    maxHour = 17;
+  } else {
+    minHour = Math.min(minHour, 5);
+    maxHour = Math.max(maxHour, 17);
+  }
+
+  const hourlyGeneral = {};
+  const hourlySelf = {};
+  for (let h = minHour; h <= maxHour; h++) {
+    const label = `${String(h).padStart(2, '0')}:00`;
+    hourlyGeneral[h] = { hour: label, label: `${String(h).padStart(2, '0')}h`, h, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
+    hourlySelf[h] = { hour: label, label: `${String(h).padStart(2, '0')}h`, h, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
+  }
+
   const areaMap = {};
   TARGET_AREAS.forEach(a => {
     areaMap[a] = { area: a, checkin: 0, vienPhi: 0, banThuoc: 0, total: 0 };
   });
-
-  const hourlyGeneral = {};
-  const hourlySelf = {};
-  for (let h = 5; h <= 18; h++) {
-    hourlyGeneral[h] = { hour: `${h}:00`, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
-    hourlySelf[h] = { hour: `${h}:00`, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
-  }
 
   const kioskMap = {};
   const staffMap = {};
@@ -341,11 +391,23 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
       hour = parseInt(timePart.split(':')[0], 10);
     }
 
-    if (hour >= 5 && hour <= 18 && hourlyGeneral[hour]) {
+    if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+      if (!hourlyGeneral[hour]) {
+        const label = `${String(hour).padStart(2, '0')}:00`;
+        hourlyGeneral[hour] = { hour: label, label: `${String(hour).padStart(2, '0')}h`, h: hour, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
+        hourlySelf[hour] = { hour: label, label: `${String(hour).padStart(2, '0')}h`, h: hour, total: 0, checkin: 0, vienPhi: 0, banThuoc: 0 };
+      }
       hourlyGeneral[hour].total++;
       if (hasCheckin) hourlyGeneral[hour].checkin++;
       if (hasVienPhi) hourlyGeneral[hour].vienPhi++;
       if (hasBanThuoc) hourlyGeneral[hour].banThuoc++;
+
+      if (isSelfService) {
+        hourlySelf[hour].total++;
+        if (hasCheckin) hourlySelf[hour].checkin++;
+        if (hasVienPhi) hourlySelf[hour].vienPhi++;
+        if (hasBanThuoc) hourlySelf[hour].banThuoc++;
+      }
     }
 
     if (isSelfService) {
@@ -355,13 +417,6 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
       if (hasBanThuoc) selfBanThuoc++;
       if (ht.includes('CK')) selfCountCK++;
       else if (ht.includes('POS')) selfCountPOS++;
-
-      if (hour >= 5 && hour <= 18 && hourlySelf[hour]) {
-        hourlySelf[hour].total++;
-        if (hasCheckin) hourlySelf[hour].checkin++;
-        if (hasVienPhi) hourlySelf[hour].vienPhi++;
-        if (hasBanThuoc) hourlySelf[hour].banThuoc++;
-      }
     }
 
     let area = row['KHU VỰC'] || '';
@@ -409,18 +464,84 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
   });
 
   const totalOps = filteredRows.length;
-  const overallRate = totalOps > 0 ? ((totalOps / targetDaily) * 100).toFixed(1) : '0';
-
+  const overallRate = targetDaily > 0 ? ((totalOps / targetDaily) * 100).toFixed(1) : '0';
   const regCompletedRate = targetCLS > 0 ? (((totalCheckin + totalVienPhi) / targetCLS) * 100).toFixed(1) : '0';
-  const medCompletedRate = targetThuoc > 0 ? (((totalBanThuoc) / targetThuoc) * 100).toFixed(1) : '0';
+  const medCompletedRate = targetThuoc > 0 ? ((totalBanThuoc / targetThuoc) * 100).toFixed(1) : '0';
 
   const totalPaid = (countCK + countPOS) || 1;
   const rateCK = ((countCK / totalPaid) * 100).toFixed(1);
   const ratePOS = ((countPOS / totalPaid) * 100).toFixed(1);
 
-  const areaBreakdown = Object.values(areaMap).sort((a, b) => b.total - a.total);
   const hourlyGeneralList = Object.keys(hourlyGeneral).map(Number).sort((a, b) => a - b).map(h => hourlyGeneral[h]);
   const hourlySelfList = Object.keys(hourlySelf).map(Number).sort((a, b) => a - b).map(h => hourlySelf[h]);
+
+  // Đỉnh tải thực tế 100% từ dữ liệu
+  const peakHourGeneral = hourlyGeneralList.reduce((max, h) => h.total > max.total ? h : max, { hour: '--', label: '--', total: 0 });
+  const peakHourSelf = hourlySelfList.reduce((max, h) => h.total > max.total ? h : max, { hour: '--', label: '--', total: 0 });
+
+  // Năng suất trung bình mỗi giờ có hoạt động
+  const activeHoursGeneral = hourlyGeneralList.filter(h => h.total > 0).length || 1;
+  const avgHourlyGeneral = (totalOps / activeHoursGeneral).toFixed(1);
+
+  const activeHoursSelf = hourlySelfList.filter(h => h.total > 0).length || 1;
+  const avgHourlySelf = (selfTotal / activeHoursSelf).toFixed(1);
+
+  // Mốc thời gian giao dịch sớm nhất và muộn nhất
+  let firstActivityTime = '--:--';
+  let lastActivityTime = '--:--';
+  const validTimes = filteredRows
+    .map(r => r['Ngày giờ thao tác'])
+    .filter(Boolean)
+    .sort();
+  if (validTimes.length > 0) {
+    firstActivityTime = validTimes[0].split(' ')[1] || validTimes[0];
+    lastActivityTime = validTimes[validTimes.length - 1].split(' ')[1] || validTimes[validTimes.length - 1];
+  }
+
+  // Phân tích Khoa phòng gắn kèm Mục tiêu thực tế từ Sheet
+  const areaBreakdown = Object.values(areaMap).map(item => {
+    const key = cleanStr(item.area);
+    const targetObj = targetsMap[key] || {
+      targetCLS: 0,
+      targetThuoc: 0,
+      totalTarget: 0,
+      clsSang: 0,
+      thuocSang: 0,
+      clsChieu: 0,
+      thuocChieu: 0
+    };
+
+    const clsActual = item.checkin + item.vienPhi;
+    const medActual = item.banThuoc;
+    const totalActual = clsActual + medActual;
+    const targetCLS = targetObj.targetCLS || 0;
+    const targetThuoc = targetObj.targetThuoc || 0;
+    const totalTarget = targetObj.totalTarget || (targetCLS + targetThuoc);
+
+    const rateCLS = targetCLS > 0 ? ((clsActual / targetCLS) * 100).toFixed(1) : (targetCLS === 0 && clsActual > 0 ? '100.0' : '0.0');
+    const rateThuoc = targetThuoc > 0 ? ((medActual / targetThuoc) * 100).toFixed(1) : (targetThuoc === 0 && medActual > 0 ? '100.0' : '0.0');
+    const rateTotal = totalTarget > 0 ? ((totalActual / totalTarget) * 100).toFixed(1) : '0.0';
+
+    return {
+      ...item,
+      clsActual,
+      medActual,
+      totalActual,
+      targetCLS,
+      targetThuoc,
+      totalTarget,
+      clsSang: targetObj.clsSang || 0,
+      thuocSang: targetObj.thuocSang || 0,
+      clsChieu: targetObj.clsChieu || 0,
+      thuocChieu: targetObj.thuocChieu || 0,
+      rateCLS,
+      rateThuoc,
+      rateTotal
+    };
+  }).sort((a, b) => b.total - a.total);
+
+  const kiosks = Object.values(kioskMap).sort((a, b) => b.count - a.count);
+  const selfKiosks = kiosks.filter(k => k.config.toLowerCase().includes('tự thực hiện'));
 
   return {
     summary: {
@@ -443,11 +564,20 @@ export function aggregateKioskData(rawRows, locationsMap = {}, targetsInfo = {},
       selfShareRate: totalOps > 0 ? ((selfTotal / totalOps) * 100).toFixed(1) : '0',
       selfRateCK: (selfCountCK + selfCountPOS) > 0 ? ((selfCountCK / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : '0',
       selfRatePOS: (selfCountCK + selfCountPOS) > 0 ? ((selfCountPOS / (selfCountCK + selfCountPOS)) * 100).toFixed(1) : '0',
+      peakHourGeneral,
+      peakHourSelf,
+      avgHourlyGeneral,
+      avgHourlySelf,
+      firstActivityTime,
+      lastActivityTime,
+      activeHoursGeneral,
+      activeHoursSelf
     },
     areaBreakdown,
     hourlyGeneralList,
     hourlySelfList,
-    kiosks: Object.values(kioskMap).sort((a, b) => b.count - a.count),
+    kiosks,
+    selfKiosks,
     staff: Object.values(staffMap).sort((a, b) => b.total - a.total),
     filteredRows
   };
