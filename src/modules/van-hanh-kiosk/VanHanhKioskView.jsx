@@ -634,9 +634,9 @@ export default function VanHanhKioskView() {
                   const pBanThuoc = item.total > 0 ? (item.banThuoc / item.total) * 100 : 0;
 
                   return (
-                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full justify-end group relative min-w-[28px]">
-                      {/* NHÃN DỮ LIỆU HIỆN TRỰC TIẾP TRÊN ĐỈNH CỘT (ALWAYS VISIBLE) */}
-                      <div className="mb-1.5 text-center flex flex-col items-center">
+                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full min-w-[28px]">
+                      {/* ZONE 1: NHÃN ĐỈNH CỘT (Chiều cao cố định h-9 để vùng vẽ cột của mọi giờ đều bằng nhau 100%) */}
+                      <div className="h-9 w-full flex flex-col items-center justify-end pb-1">
                         {isPeak && (
                           <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded mb-0.5 tracking-tighter whitespace-nowrap">
                             Đỉnh
@@ -649,40 +649,42 @@ export default function VanHanhKioskView() {
                         </span>
                       </div>
 
-                      {/* Thân cột biểu đồ (Phân đoạn xếp chồng) */}
-                      <div 
-                        className={`w-full max-w-[36px] rounded-t-md overflow-hidden flex flex-col justify-end transition-all duration-300 border border-b-0 ${
-                          isPeak ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-300'
-                        } ${item.total === 0 ? 'bg-slate-100' : ''}`}
-                        style={{ height: `${Math.max(4, pct)}%` }}
-                        title={`${item.hour}: Tổng ${item.total} lượt (Checkin: ${item.checkin}, Viện phí: ${item.vienPhi}, Thuốc: ${item.banThuoc})`}
-                      >
-                        {item.total > 0 && (
-                          <>
-                            {item.banThuoc > 0 && (
-                              <div 
-                                className="bg-emerald-600 w-full" 
-                                style={{ height: `${pBanThuoc}%` }} 
-                              />
-                            )}
-                            {item.vienPhi > 0 && (
-                              <div 
-                                className="bg-amber-500 w-full" 
-                                style={{ height: `${pVienPhi}%` }} 
-                              />
-                            )}
-                            {item.checkin > 0 && (
-                              <div 
-                                className="bg-blue-600 w-full" 
-                                style={{ height: `${pCheckin}%` }} 
-                              />
-                            )}
-                          </>
-                        )}
+                      {/* ZONE 2: KHU VỰC VẼ THÂN CỘT (Chiếm toàn bộ không gian còn lại flex-1, tỷ lệ chiều cao tuyệt đối chuẩn xác) */}
+                      <div className="flex-1 w-full flex items-end justify-center">
+                        <div 
+                          className={`w-full max-w-[36px] rounded-t-md overflow-hidden flex flex-col justify-end transition-all duration-300 border border-b-0 ${
+                            isPeak ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-300'
+                          } ${item.total === 0 ? 'bg-slate-100' : ''}`}
+                          style={{ height: `${Math.max(item.total > 0 ? 3 : 1, pct)}%` }}
+                          title={`${item.hour}: Tổng ${item.total} lượt (Checkin: ${item.checkin}, Viện phí: ${item.vienPhi}, Thuốc: ${item.banThuoc})`}
+                        >
+                          {item.total > 0 && (
+                            <>
+                              {item.banThuoc > 0 && (
+                                <div 
+                                  className="bg-emerald-600 w-full" 
+                                  style={{ height: `${pBanThuoc}%` }} 
+                                />
+                              )}
+                              {item.vienPhi > 0 && (
+                                <div 
+                                  className="bg-amber-500 w-full" 
+                                  style={{ height: `${pVienPhi}%` }} 
+                                />
+                              )}
+                              {item.checkin > 0 && (
+                                <div 
+                                  className="bg-blue-600 w-full" 
+                                  style={{ height: `${pCheckin}%` }} 
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Nhãn khung giờ dưới chân cột */}
-                      <div className="mt-2 text-center">
+                      {/* ZONE 3: NHÃN TRỤC X DƯỚI CHÂN CỘT (Chiều cao cố định h-6) */}
+                      <div className="h-6 w-full flex items-center justify-center pt-1.5 border-t border-slate-200">
                         <span className={`text-[11px] font-mono font-bold block ${
                           isPeak ? 'text-rose-600 font-black' : 'text-slate-600'
                         }`}>
@@ -891,9 +893,9 @@ export default function VanHanhKioskView() {
                   const isPeak = item.total > 0 && item.total === analytics.summary.peakHourSelf.total;
 
                   return (
-                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full justify-end min-w-[28px]">
-                      {/* NHÃN DỮ LIỆU HIỆN TRỰC TIẾP TRÊN ĐỈNH CỘT (ALWAYS VISIBLE) */}
-                      <div className="mb-1.5 text-center flex flex-col items-center">
+                    <div key={item.hour} className="flex-1 flex flex-col items-center h-full min-w-[28px]">
+                      {/* ZONE 1: NHÃN ĐỈNH CỘT (Chiều cao cố định h-9) */}
+                      <div className="h-9 w-full flex flex-col items-center justify-end pb-1">
                         {isPeak && (
                           <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 border border-purple-300 px-1 py-0.2 rounded mb-0.5 tracking-tighter whitespace-nowrap">
                             Đỉnh
@@ -906,17 +908,19 @@ export default function VanHanhKioskView() {
                         </span>
                       </div>
 
-                      {/* Thân cột */}
-                      <div 
-                        className={`w-full max-w-[36px] bg-purple-600 rounded-t-md transition-all duration-300 border border-b-0 ${
-                          isPeak ? 'border-purple-800 ring-2 ring-purple-300' : 'border-purple-700'
-                        }`}
-                        style={{ height: `${Math.max(4, pct)}%` }}
-                        title={`${item.hour}: ${item.total} lượt tự làm`}
-                      />
+                      {/* ZONE 2: KHU VỰC VẼ THÂN CỘT (Chiếm toàn bộ không gian còn lại flex-1) */}
+                      <div className="flex-1 w-full flex items-end justify-center">
+                        <div 
+                          className={`w-full max-w-[36px] bg-purple-600 rounded-t-md transition-all duration-300 border border-b-0 ${
+                            isPeak ? 'border-purple-800 ring-2 ring-purple-300' : 'border-purple-700'
+                          }`}
+                          style={{ height: `${Math.max(item.total > 0 ? 3 : 1, pct)}%` }}
+                          title={`${item.hour}: ${item.total} lượt tự làm`}
+                        />
+                      </div>
 
-                      {/* Nhãn khung giờ */}
-                      <div className="mt-2 text-center">
+                      {/* ZONE 3: NHÃN TRỤC X DƯỚI CHÂN CỘT (Chiều cao cố định h-6) */}
+                      <div className="h-6 w-full flex items-center justify-center pt-1.5 border-t border-purple-200">
                         <span className={`text-[11px] font-mono font-bold block ${
                           isPeak ? 'text-purple-700 font-black' : 'text-slate-600'
                         }`}>
